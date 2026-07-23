@@ -130,6 +130,13 @@
   const RARITY_KEYS = ["COMMON","UNCOMMON","RARE","EPIC","LEGENDARY","MYTHICAL","GOD"];
   const BASE_RARITY = [45, 28, 15, 7, 3, 1.5, 0.5];
   function rarityWeights(luck, bossReward = false) {
+    // Developer 100× Luck: the normal 0.5% God chance becomes 50%.
+    // Boss rewards double that to a guaranteed God roll.
+    if (luck >= 100) {
+      return bossReward
+        ? [0, 0, 0, 0, 0, 0, 100]
+        : [0, 0, 2, 5, 13, 30, 50];
+    }
     const t = clamp((luck - 1) / 2, 0, 1.5);
     const start = BASE_RARITY.slice();
     const end = [30, 27, 21, 11, 6, 4, 1];
@@ -148,6 +155,7 @@
       w[6] = oldGod * 2;
       w[0] = Math.max(1, w[0] - oldGod);
     }
+    for (let i = 0; i < w.length; i++) w[i] = Math.max(0, w[i]);
     const sum = w.reduce((a, b) => a + b, 0);
     return w.map(v => v * 100 / sum);
   }
@@ -468,6 +476,9 @@
     lastFrame:0,
     elapsed:0,
     dev:false,
+    devBoostActive:false,
+    devDamageMultiplier:1,
+    devLuckOverride:0,
     nextWaveDelay:0,
     supportCounts:{heal:0,shield:0,damage:0,haste:0}
   };
@@ -729,7 +740,7 @@
   }
   function startRun(mode){
     if(mode==="chaos"&&!save.chaosUnlocked)return;
-    game.mode=mode;game.state="starting";game.wave=1;game.runLevel=1;game.xp=0;game.xpNeed=45;game.rerolls=3;game.tempLuck=(save.selectedCharacter==="GAMBLER"?.25:0);game.weapons=[{id:CHARACTERS[save.selectedCharacter].weapon,level:1,evolution:null,lastShot:-99,alt:false,orbitHits:{}}];game.books=[];game.passives={};game.abilityEvolved=false;game.startingBonus=null;game.enemies=[];game.projectiles=[];game.zones=[];game.traps=[];game.gems=[];game.particles=[];game.numbers=[];game.batches=[];game.batchIndex=0;game.rewardQueue=[];game.bossRewardPending=false;game.specialBoss=null;game.postCreator=false;game.continuePrompted=false;game.pendingEnding=null;game.player=createPlayer();game.camera.x=clamp(game.player.x-innerWidth/2,0,game.world.w-innerWidth);game.camera.y=clamp(game.player.y-innerHeight/2,0,game.world.h-innerHeight);game.runStartedAt=nowSec();game.runStats=newRunStats();game.dev=false;game.nextWaveDelay=0;generateLandmarks();resetInputs();updateMobileUI();
+    game.mode=mode;game.state="starting";game.wave=1;game.runLevel=1;game.xp=0;game.xpNeed=45;game.rerolls=3;game.tempLuck=(save.selectedCharacter==="GAMBLER"?.25:0);game.weapons=[{id:CHARACTERS[save.selectedCharacter].weapon,level:1,evolution:null,lastShot:-99,alt:false,orbitHits:{}}];game.books=[];game.passives={};game.abilityEvolved=false;game.startingBonus=null;game.enemies=[];game.projectiles=[];game.zones=[];game.traps=[];game.gems=[];game.particles=[];game.numbers=[];game.batches=[];game.batchIndex=0;game.rewardQueue=[];game.bossRewardPending=false;game.specialBoss=null;game.postCreator=false;game.continuePrompted=false;game.pendingEnding=null;game.player=createPlayer();game.camera.x=clamp(game.player.x-innerWidth/2,0,game.world.w-innerWidth);game.camera.y=clamp(game.player.y-innerHeight/2,0,game.world.h-innerHeight);game.runStartedAt=nowSec();game.runStats=newRunStats();game.dev=game.devBoostActive;game.nextWaveDelay=0;generateLandmarks();resetInputs();updateMobileUI();
     const bonuses=startingBonusCards(save.selectedCharacter);openChoiceScreen(bonuses,"starting");
   }
   function startingBonusCards(charId){
@@ -774,8 +785,12 @@
   function getOwnedBook(id){return game.books.find(b=>b.id===id);}
   function weaponMaxLevel(w){return WEAPONS[w.id].maxLevel+(game.player.divinity?1:0);}
   function eligibleEvolutions(){return EVOLUTIONS.filter(e=>{const w=getOwnedWeapon(e.weapon);if(!w||w.evolution||w.level<WEAPONS[e.weapon].maxLevel)return false;if(e.reqBook&&!getOwnedBook(e.reqBook))return false;if(e.reqPassive&&!game.passives[e.reqPassive])return false;return true;});}
+  function currentLuck(){
+    return game.devLuckOverride>0 ? game.devLuckOverride : save.luck+game.tempLuck;
+  }
+
   function generateCard(bossReward=false,excludedFamilies=new Set()){
-    const luck=save.luck+game.tempLuck;
+    const luck=currentLuck();
     const rolled=rollRarity(luck,bossReward);
     const candidates=[];
     for(const id of save.unlockedWeapons){const def=WEAPONS[id];if(!def||!rarityAllowed(def.rarity,rolled))continue;const owned=getOwnedWeapon(id);if(owned){if(owned.level<weaponMaxLevel(owned)&&!owned.evolution)candidates.push({kind:"weapon",id,family:"weapon:"+id,rarity:def.rarity,name:def.name,desc:`Upgrade to level ${owned.level+1}/${weaponMaxLevel(owned)}.`});}else if(game.weapons.length<save.slots.weapons)candidates.push({kind:"weapon",id,family:"weapon:"+id,rarity:def.rarity,name:def.name,desc:`Equip: ${def.description}`});}
@@ -794,7 +809,7 @@
     game.state="choice";game.currentChoices=cards;game.choiceContext=context;resetInputs();updateMobileUI();
     const cardHtml=cards.map((c,i)=>{const r=RARITIES[c.rarity]||RARITIES.COMMON;return `<div class="nbs-card" style="--rarity:${r.color}" data-action="choose:${i}"><div class="diamonds">${"◆".repeat(Math.min(8,r.diamonds))}</div><div class="rarity">${r.name} • ${c.kind.toUpperCase()}</div><h3>${escapeHtml(c.name)}</h3><p class="desc">${escapeHtml(c.desc)}</p><p class="details">Click to choose • Key ${i+1}</p></div>`}).join("");
     const title=context==="starting"?"Choose a Starting Bonus":context==="boss"?"Boss Reward":context==="level"?`LEVEL ${game.runLevel}`:"Choose an Upgrade";
-    showOverlay(`<div class="nbs-panel"><h2 class="nbs-center">${title}</h2><p class="nbs-center nbs-small">Luck ${(save.luck+game.tempLuck).toFixed(2)}× • Weapons ${game.weapons.length}/${save.slots.weapons} • Books ${game.books.length}/${save.slots.books}</p><div class="nbs-grid">${cardHtml}</div><div class="nbs-row" style="margin-top:16px"><button class="nbs-btn" data-action="reroll" ${game.rerolls<=0?"disabled":""}>Reroll all (${game.rerolls})</button></div></div>`);
+    showOverlay(`<div class="nbs-panel"><h2 class="nbs-center">${title}</h2><p class="nbs-center nbs-small">Luck ${currentLuck().toFixed(2)}× • Weapons ${game.weapons.length}/${save.slots.weapons} • Books ${game.books.length}/${save.slots.books}</p><div class="nbs-grid">${cardHtml}</div><div class="nbs-row" style="margin-top:16px"><button class="nbs-btn" data-action="reroll" ${game.rerolls<=0?"disabled":""}>Reroll all (${game.rerolls})</button></div></div>`);
   }
   function rerollChoices(){if(game.state!=="choice"||game.rerolls<=0)return;const old=game.currentChoices.map(c=>c.id);game.rerolls--;game.runStats.rerollsUsed++;const boss=game.choiceContext==="boss";openChoiceScreen(game.choiceContext==="starting"?startingBonusCards(save.selectedCharacter):makeThreeChoices(boss,old),game.choiceContext);}
   function chooseCard(index){if(game.state!=="choice")return;const c=game.currentChoices[index];if(!c)return;sfx(660,.08,"triangle",.05);game.runStats.rarities[c.rarity]=(game.runStats.rarities[c.rarity]||0)+1;if(c.rarity==="GOD"){save.achievements.GOD_CARD=true;persist();}
@@ -949,7 +964,7 @@
     if(w.evolution){const e=EVOLUTIONS.find(x=>x.id===w.evolution);if(e){base.name=e.name;for(const [k,v] of Object.entries(e.mods)){if(k==="damage"||k==="cooldown")base[k]*=v;else if(typeof v==="number"&&typeof base[k]==="number")base[k]+=v;else base[k]=v;}if(base.overrideBehavior)base.behavior=base.overrideBehavior;}}
     return base;
   }
-  function totalDamageMultiplier(enemy=null){let m=game.player.damage;if(game.player.rage>0)m*=1.45;if(game.player.overcharge>0)m*=1.55;if(game.player.moving&&game.passives.MOVING_POWER)m*=1+game.passives.MOVING_POWER*.06;if(game.player.hp/game.player.maxHp<.35&&game.passives.LOW_HP)m*=1+game.passives.LOW_HP*.12;if(game.player.dashBuff>0)m*=1.18;if(enemy?.elite||enemy?.boss){if(save.selectedCharacter==="OVERLORD")m*=1.15;}if(enemy&&save.selectedCharacter==="REAPER"&&enemy.hp/enemy.maxHp<.25)m*=1.2;return m;}
+  function totalDamageMultiplier(enemy=null){let m=game.player.damage*(game.devDamageMultiplier||1);if(game.player.rage>0)m*=1.45;if(game.player.overcharge>0)m*=1.55;if(game.player.moving&&game.passives.MOVING_POWER)m*=1+game.passives.MOVING_POWER*.06;if(game.player.hp/game.player.maxHp<.35&&game.passives.LOW_HP)m*=1+game.passives.LOW_HP*.12;if(game.player.dashBuff>0)m*=1.18;if(enemy?.elite||enemy?.boss){if(save.selectedCharacter==="OVERLORD")m*=1.15;}if(enemy&&save.selectedCharacter==="REAPER"&&enemy.hp/enemy.maxHp<.25)m*=1.2;return m;}
   function critRoll(rapid=false){const chance=game.player.crit*(rapid?.45:1);return Math.random()<chance;}
   function fireWeapons(dt,time){
     if(game.state!=="playing")return;
@@ -1514,7 +1529,7 @@
   function drawOrbitalsAndDrones(){const t=nowSec();for(const w of game.weapons){if(w.disabled>0)continue;const d=effectiveWeapon(w);if(["orbital","orbitalArc"].includes(d.behavior)){const count=(d.orbitCount||1)+Math.floor(w.level/4),radius=(d.orbitRadius||70)*(1+game.player.orbit),speed=(d.orbitSpeed||2)*(1+game.player.orbit*.4);for(let i=0;i<count;i++){const a=t*speed+i*TAU/count,x=game.player.x+Math.cos(a)*radius,y=game.player.y+Math.sin(a)*radius;ctx.fillStyle=d.color;ctx.shadowBlur=12;ctx.shadowColor=d.color;ctx.beginPath();ctx.arc(x,y,8*game.player.area,0,TAU);ctx.fill();ctx.shadowBlur=0;}}if(["drone","droneEcho"].includes(d.behavior)){const count=(d.droneCount||1)+Math.floor(w.level/5);for(let i=0;i<count;i++){const a=t*.75+i*TAU/count,x=game.player.x+Math.cos(a)*(52+i*7),y=game.player.y+Math.sin(a)*(52+i*7);ctx.fillStyle=d.color;ctx.strokeStyle="#fff";ctx.fillRect(x-7,y-7,14,14);ctx.strokeRect(x-7,y-7,14,14);}}}}
   function drawPlayer(){const p=game.player;ctx.save();ctx.translate(p.x,p.y);ctx.fillStyle=p.color;ctx.strokeStyle=p.ring;ctx.lineWidth=4;ctx.shadowBlur=18;ctx.shadowColor=p.ring;ctx.beginPath();ctx.arc(0,0,p.r,0,TAU);ctx.fill();ctx.stroke();ctx.rotate(input.aimAngle);ctx.fillStyle="#fff";ctx.fillRect(8,-4,25,8);ctx.rotate(-input.aimAngle);if(p.shield>0){ctx.strokeStyle="#7dfcff";ctx.beginPath();ctx.arc(0,0,p.r+9,0,TAU);ctx.stroke();}ctx.restore();}
   function drawParticlesAndNumbers(){for(const p of game.particles){ctx.globalAlpha=clamp(p.life*2,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,TAU);ctx.fill();}ctx.globalAlpha=1;ctx.font="bold 14px Arial";ctx.textAlign="center";for(const n of game.numbers){ctx.globalAlpha=clamp(n.life*1.5,0,1);ctx.fillStyle=n.color;ctx.fillText(n.text,n.x,n.y);}ctx.globalAlpha=1;}
-  function drawHUD(){const p=game.player;if(!p)return;const pad=14;ctx.save();ctx.fillStyle="rgba(5,8,23,.72)";ctx.fillRect(pad,pad,270,118);ctx.fillStyle="#fff";ctx.font="bold 16px Arial";ctx.textAlign="left";ctx.fillText(`Wave ${game.wave} • ${game.mode.toUpperCase()}`,pad+10,pad+22);ctx.font="13px Arial";ctx.fillText(`Level ${game.runLevel} • Rerolls ${game.rerolls} • Luck ${(save.luck+game.tempLuck).toFixed(2)}×`,pad+10,pad+43);drawBar(pad+10,pad+52,245,13,p.hp/p.maxHp,"#63ff8b",`HP ${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`);if(p.shield>0)drawBar(pad+10,pad+70,245,8,Math.min(1,p.shield/100),"#7dfcff","");drawBar(pad+10,pad+84,245,11,game.xp/game.xpNeed,"#a77dff",`XP ${Math.floor(game.xp)}/${game.xpNeed}`);ctx.fillStyle="#c7d4ff";ctx.fillText(`Dash ${p.dashTimer<=0?"READY":p.dashTimer.toFixed(1)} • Ability ${p.abilityTimer<=0?"READY":p.abilityTimer.toFixed(1)}`,pad+10,pad+112);
+  function drawHUD(){const p=game.player;if(!p)return;const pad=14;ctx.save();ctx.fillStyle="rgba(5,8,23,.72)";ctx.fillRect(pad,pad,270,118);ctx.fillStyle="#fff";ctx.font="bold 16px Arial";ctx.textAlign="left";ctx.fillText(`Wave ${game.wave} • ${game.mode.toUpperCase()}`,pad+10,pad+22);ctx.font="13px Arial";ctx.fillText(`Level ${game.runLevel} • Rerolls ${game.rerolls} • Luck ${currentLuck().toFixed(2)}×`,pad+10,pad+43);drawBar(pad+10,pad+52,245,13,p.hp/p.maxHp,"#63ff8b",`HP ${Math.ceil(p.hp)}/${Math.ceil(p.maxHp)}`);if(p.shield>0)drawBar(pad+10,pad+70,245,8,Math.min(1,p.shield/100),"#7dfcff","");drawBar(pad+10,pad+84,245,11,game.xp/game.xpNeed,"#a77dff",`XP ${Math.floor(game.xp)}/${game.xpNeed}`);ctx.fillStyle="#c7d4ff";ctx.fillText(`Dash ${p.dashTimer<=0?"READY":p.dashTimer.toFixed(1)} • Ability ${p.abilityTimer<=0?"READY":p.abilityTimer.toFixed(1)}`,pad+10,pad+112);
     const boss=game.enemies.find(e=>e.boss&&!e.dead);if(boss){const w=Math.min(innerWidth*.62,720),x=(innerWidth-w)/2,y=18;ctx.fillStyle="#130716";ctx.fillRect(x,y,w,20);ctx.fillStyle=boss.color;ctx.fillRect(x,y,w*clamp(boss.hp/boss.maxHp,0,1),20);ctx.strokeStyle="#fff";ctx.strokeRect(x,y,w,20);ctx.fillStyle="#fff";ctx.font="bold 14px Arial";ctx.textAlign="center";ctx.fillText(boss.name,innerWidth/2,y+15);ctx.font="12px Arial";ctx.fillStyle="#d8e4ff";ctx.fillText(`${boss.phaseName||`Phase ${boss.phase}`} • ${boss.attackName||"POSITIONING"}`,innerWidth/2,y+38);}
     ctx.restore();}
   function drawBar(x,y,w,h,ratio,color,label){ctx.fillStyle="#0b1024";ctx.fillRect(x,y,w,h);ctx.fillStyle=color;ctx.fillRect(x,y,w*clamp(ratio,0,1),h);ctx.strokeStyle="#53689c";ctx.strokeRect(x,y,w,h);if(label){ctx.fillStyle="#fff";ctx.font="10px Arial";ctx.textAlign="center";ctx.fillText(label,x+w/2,y+h-2);ctx.textAlign="left";}}
@@ -1576,13 +1591,48 @@
   // DEVELOPER CONSOLE
   // ============================================================
   function openDevConsole(){
-    const pw=prompt("Developer password");if(pw!=="Neondevshooterdoggoz")return;
-    const cmd=(prompt("Commands: coins, unlockall, wave50, wave100, wave200, god, clear, reset")||"").toLowerCase();
+    const cmd=(prompt(
+      "Developer commands:\n\n" +
+      "coins\nunlockall\nwave50\nwave100\nwave200\n" +
+      "luck100\ndamage100\nboost100\nboostoff\n" +
+      "god\nclear\nreset"
+    )||"").trim().toLowerCase();
+
     if(cmd==="coins"){save.coins+=10000;persist();alert("+10,000 coins");}
     if(cmd==="unlockall"){save.ownedCharacters=Object.keys(CHARACTERS);save.revealedCharacters=Object.keys(CHARACTERS);save.unlockedWeapons=Object.keys(WEAPONS);save.unlockedBooks=Object.keys(BOOKS);save.chaosUnlocked=true;persist();alert("Unlocked all content");}
     if(cmd==="wave50"||cmd==="wave100"||cmd==="wave200"){const w=Number(cmd.slice(4));if(w===200)save.chaosUnlocked=true;startRun(w===200?"chaos":"normal");game.dev=true;hideOverlay();game.startingBonus="DEV";game.wave=w;prepareWave();}
+
+    if(cmd==="luck100"){
+      game.devBoostActive=true;
+      game.dev=true;
+      game.devLuckOverride=100;
+      alert("Developer Luck: 100×\nThis run will not earn coins or records.");
+    }
+    if(cmd==="damage100"){
+      game.devBoostActive=true;
+      game.dev=true;
+      game.devDamageMultiplier=100;
+      alert("Developer Damage: 100×\nThis run will not earn coins or records.");
+    }
+    if(cmd==="boost100"){
+      game.devBoostActive=true;
+      game.dev=true;
+      game.devLuckOverride=100;
+      game.devDamageMultiplier=100;
+      alert("Developer Boost enabled:\n100× Luck + 100× Damage\nThis run will not earn coins or records.");
+    }
+    if(cmd==="boostoff"){
+      game.devBoostActive=false;
+      game.devLuckOverride=0;
+      game.devDamageMultiplier=1;
+      // A run that used developer boosts remains a developer run,
+      // so disabling the boost cannot restore coin or record rewards mid-run.
+      if(!game.player || game.state==="menu") game.dev=false;
+      alert("Developer Luck and Damage boosts disabled.");
+    }
+
     if(cmd==="god"&&game.player){game.dev=true;game.player.hp=game.player.maxHp=999999;game.player.damage*=50;}
-    if(cmd==="clear"&&game.player){for(const e of game.enemies)if(!e.boss)killEnemy(e,"DEV");}
+    if(cmd==="clear"&&game.player){game.dev=true;for(const e of game.enemies)if(!e.boss)killEnemy(e,"DEV");}
     if(cmd==="reset"&&confirm("Reset V2 save?")){localStorage.removeItem(SAVE_KEY);location.reload();}
   }
 
