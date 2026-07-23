@@ -1,4 +1,4 @@
-// NEON BOSS SHOOTER V2 — ACTUAL ROGUELIKE + BOSS OVERHAUL BUILD
+// NEON BOSS SHOOTER V2 — LATE-BEAM BOSSES + GOD WEAPON OVERDRIVE BUILD
 // Put this file beside index.html and load it with: <script src="game-v2.js"></script>
 (() => {
   "use strict";
@@ -168,7 +168,7 @@
     }
     return "COMMON";
   }
-  const rarityPower = { COMMON:1, UNCOMMON:1.35, RARE:1.85, EPIC:2.6, LEGENDARY:3.6, MYTHICAL:5, GOD:7.5, ASCENDED:10 };
+  const rarityPower = { COMMON:1, UNCOMMON:1.35, RARE:1.85, EPIC:2.6, LEGENDARY:3.6, MYTHICAL:5, GOD:18, ASCENDED:30 };
 
   const SAVE_KEY = "neonBossShooterV2_Release_1";
   const SAVE_VERSION = 2;
@@ -271,7 +271,7 @@
     FLAMER:W("Flamer","EPIC","manualFlame",0.075,2.4,{maxLevel:9,projectileSpeed:440,life:.38,spread:.58,status:"burn",description:"Short fire stream that stacks Burn."}),
     NOVABURST:W("Nova Burst","LEGENDARY","manualSpread",0.8,15,{maxLevel:10,count:5,spread:.5,pierce:2,description:"Heavy fan of piercing shots."}),
     SOLAR_LANCE:W("Solar Lance","MYTHICAL","manualBeam",1.2,65,{maxLevel:11,pierce:8,description:"A devastating aimed beam."}),
-    JUDGMENT:W("Judgment Engine","GOD","judgment",1.0,75,{maxLevel:12,pierce:8,blast:135,description:"Alternates divine beams and explosive volleys."}),
+    JUDGMENT:W("Judgment Engine","GOD","judgment",.38,260,{maxLevel:12,pierce:24,blast:285,count:13,projectileSpeed:1180,r:8,description:"Overwhelming divine beam barrages and colossal explosive verdicts."}),
 
     FROST_SHARDS:W("Frost Shards","UNCOMMON","auto",0.52,8,{maxLevel:7,count:2,spread:.18,target:"fastest",status:"frost",description:"Automatic freezing shards."}),
     THUNDER_ROD:W("Thunder Rod","EPIC","autoChain",0.9,22,{maxLevel:9,target:"cluster",status:"shock",description:"Strikes the densest enemy group."}),
@@ -283,13 +283,13 @@
     ORBIT:W("Orbit","EPIC","orbital",0,12,{maxLevel:9,orbitCount:3,orbitRadius:92,orbitSpeed:2.2,description:"Three orbiting projectiles."}),
     BLADE_HALO:W("Blade Halo","EPIC","orbital",0,18,{maxLevel:9,orbitCount:2,orbitRadius:62,orbitSpeed:3.1,status:"bleed",description:"Close rotating blades."}),
     STORM_RING:W("Storm Ring","LEGENDARY","orbitalArc",0,15,{maxLevel:10,orbitCount:4,orbitRadius:105,orbitSpeed:2.4,status:"shock",description:"Orbiting nodes arc lightning outward."}),
-    SINGULARITY_CROWN:W("Singularity Crown","GOD","orbital",0,30,{maxLevel:12,orbitCount:6,orbitRadius:120,orbitSpeed:2.8,pull:45,description:"Layered orbitals with gravitational pull."}),
+    SINGULARITY_CROWN:W("Singularity Crown","GOD","orbital",0,105,{maxLevel:12,orbitCount:10,orbitRadius:155,orbitSpeed:4.3,pull:190,r:11,description:"A violent crown of ten singularities that shreds and drags entire waves."}),
 
     SCOUT_DRONE:W("Scout Drone","UNCOMMON","drone",0.75,8,{maxLevel:7,droneCount:1,target:"nearest",description:"A following automatic drone."}),
     SENTRY_DRONE:W("Sentry Drone","RARE","drone",1.05,18,{maxLevel:8,droneCount:1,target:"highest",description:"Targets high-HP enemies."}),
     PHOENIX_DRONE:W("Phoenix Drone","LEGENDARY","drone",0.7,14,{maxLevel:10,droneCount:1,status:"burn",description:"A burning drone that reforms."}),
     ECHO_FAMILIAR:W("Echo Familiar","EPIC","droneEcho",1.1,12,{maxLevel:9,droneCount:1,description:"Repeats weakened manual attacks."}),
-    GENESIS_ARRAY:W("Genesis Array","GOD","drone",0.42,18,{maxLevel:12,droneCount:3,pierce:1,target:"adaptive",description:"Three adaptive combat drones."}),
+    GENESIS_ARRAY:W("Genesis Array","GOD","drone",.16,78,{maxLevel:12,droneCount:7,pierce:5,count:3,spread:.14,target:"adaptive",projectileSpeed:980,r:6,description:"Seven adaptive war drones firing triple piercing volleys."}),
 
     TWIN_DAGGERS:W("Twin Daggers","COMMON","manualMelee",0.32,13,{maxLevel:6,meleeRange:75,arc:1.15,status:"bleed",description:"Fast aimed melee slashes."}),
     BOOMERANG:W("Boomerang","UNCOMMON","manualReturn",0.8,15,{maxLevel:7,projectileSpeed:600,pierce:4,description:"Returns through enemies."}),
@@ -802,7 +802,16 @@
     if(!game.abilityEvolved&&game.wave>=25&&RARITIES[rolled].rank>=4)candidates.push({kind:"ability",id:"ABILITY_EVOLUTION",family:"ability",rarity:rolled,name:"Ability Evolution",desc:"Transform this character's active ability."});
     const valid=candidates.filter(c=>!excludedFamilies.has(c.family));
     if(!valid.length){const id=pick(statFamilies);const p=PASSIVES[id];return {kind:"passive",id,family:"fallback:"+id,rarity:rolled,name:p.name,desc:p.desc};}
-    const exact=valid.filter(c=>c.rarity===rolled);return pick(exact.length?exact:valid);
+    const exact=valid.filter(c=>c.rarity===rolled);
+    if(rolled==="GOD"){
+      const trueGod=exact.filter(c=>["weapon","book","evolution"].includes(c.kind));
+      if(trueGod.length&&Math.random()<.82)return pick(trueGod);
+    }
+    if(rolled==="MYTHICAL"){
+      const premium=exact.filter(c=>["weapon","book","evolution"].includes(c.kind));
+      if(premium.length&&Math.random()<.45)return pick(premium);
+    }
+    return pick(exact.length?exact:valid);
   }
   function makeThreeChoices(bossReward=false,excludeIds=[]){const out=[],families=new Set(),ids=new Set(excludeIds);let guard=0;while(out.length<3&&guard++<100){const c=generateCard(bossReward,families);if(ids.has(c.id))continue;out.push(c);families.add(c.family);ids.add(c.id);}while(out.length<3){const id=["DAMAGE","HEALTH","SPEED"][out.length];out.push({kind:"passive",id,family:"safe:"+id,rarity:"COMMON",name:PASSIVES[id].name,desc:PASSIVES[id].desc});}return out;}
   function openChoiceScreen(cards,context="level"){
@@ -916,23 +925,25 @@
   function spawnBoss(type,small=false){
     const pos={x:game.world.w/2,y:game.world.h*.22};
     const chaos=game.mode==="chaos";
-    const bossScale=(1+game.wave*.018)*(chaos?1.22:1)*(game.postCreator?1+Math.max(0,game.wave-200)*.006:1);
+    // Bosses are now short, lethal pattern fights instead of giant health sponges.
+    const bossScale=(1+game.wave*.0085)*(chaos?1.14:1)*(game.postCreator?1+Math.max(0,game.wave-200)*.003:1);
     const baseHp={
-      GATEKEEPER:1250,RIFT:1650,RAVAGER:2450,WORLDBREAKER:4300,CREATOR:7000
-    }[type] || (480+game.wave*20);
-    const baseDamage={GATEKEEPER:8,RIFT:8,RAVAGER:9,WORLDBREAKER:8,CREATOR:7}[type] || 7;
+      GATEKEEPER:820,RIFT:980,RAVAGER:1350,WORLDBREAKER:2150,CREATOR:3400
+    }[type] || (300+game.wave*10);
+    const baseDamage={GATEKEEPER:9,RIFT:9,RAVAGER:10,WORLDBREAKER:9,CREATOR:8}[type] || 8;
     const special=["GATEKEEPER","RIFT","RAVAGER","WORLDBREAKER","CREATOR"].includes(type);
     const gates={GATEKEEPER:.66,RIFT:.60,RAVAGER:.75,WORLDBREAKER:.75,CREATOR:.80};
+    const hp=baseHp*bossScale*(small?.52:1);
     const e={
       id:uid(),typeId:"BOSS",bossType:type,name:BOSS_NAMES[type]||"Boss",
       x:pos.x,y:pos.y,r:type==="CREATOR"?102:type==="WORLDBREAKER"?98:special?82:small?44:60,
-      hp:baseHp*bossScale*(small?.58:1),maxHp:baseHp*bossScale*(small?.58:1),
-      speed:(type==="RAVAGER"?105:type==="RIFT"?92:special?62:76)*(chaos?1.10:1),
-      damage:baseDamage*(chaos?1.12:1),color:type==="CREATOR"?"#e7fcff":type==="WORLDBREAKER"?"#ff2f88":type==="RAVAGER"?"#ff5e3b":type==="GATEKEEPER"?"#78b7ff":type==="RIFT"?"#b06cff":"#ff3b93",
-      ai:"boss",shootCooldown:1.4,shootTimer:1.2,bulletSpeed:(270+game.wave*.6)*(chaos?1.12:1),xp:200+game.wave*12,
-      elite:false,eliteMods:[],boss:true,dead:false,active:true,hitFlash:0,contactTimer:0,stateTimer:1.8,angle:0,
+      hp,maxHp:hp,
+      speed:(type==="RAVAGER"?112:type==="RIFT"?98:special?66:80)*(chaos?1.12:1),
+      damage:baseDamage*(chaos?1.15:1),color:type==="CREATOR"?"#e7fcff":type==="WORLDBREAKER"?"#ff2f88":type==="RAVAGER"?"#ff5e3b":type==="GATEKEEPER"?"#78b7ff":type==="RIFT"?"#b06cff":"#ff3b93",
+      ai:"boss",shootCooldown:1.15,shootTimer:.9,bulletSpeed:(300+game.wave*.75)*(chaos?1.16:1),xp:200+game.wave*12,
+      elite:false,eliteMods:[],boss:true,dead:false,active:true,hitFlash:0,contactTimer:0,stateTimer:1.5,angle:0,
       dashTimer:0,dashVx:0,dashVy:0,telegraph:0,status:{burn:0,burnTime:0,poison:0,poisonTime:0,bleed:0,bleedTime:0,frost:0,shock:0,slow:0,slowTime:0,armorBreak:0},
-      shield:0,phase:1,phaseName:"Phase 1",attackName:"",attackTimer:1.2,transitionTimer:0,objective:0,invulnerable:false,
+      shield:0,phase:1,phaseName:"Phase 1",attackName:"",attackTimer:1.0,transitionTimer:0,objective:0,invulnerable:false,
       smallBoss:small,lastHitBy:Object.create(null),bossEvents:[],recentAttacks:[],nextGate:gates[type]||0,gateTriggered:false,
       enraged:false,desperation:false,sequenceId:0
     };
@@ -959,9 +970,25 @@
   function effectiveWeapon(w){
     const base=Object.assign({},WEAPONS[w.id]);
     base.level=w.level;
-    const scale=1+(w.level-1)*(.14+RARITIES[base.rarity].rank*.012);
+    const rank=RARITIES[base.rarity].rank;
+    const scale=1+(w.level-1)*(.14+rank*.012);
     base.damage*=scale;base.cooldown/=1+(w.level-1)*.035;
-    if(w.evolution){const e=EVOLUTIONS.find(x=>x.id===w.evolution);if(e){base.name=e.name;for(const [k,v] of Object.entries(e.mods)){if(k==="damage"||k==="cooldown")base[k]*=v;else if(typeof v==="number"&&typeof base[k]==="number")base[k]+=v;else base[k]=v;}if(base.overrideBehavior)base.behavior=base.overrideBehavior;}}
+    if(base.rarity==="GOD"){
+      // God weapons should feel run-defining immediately, not like slightly better Epics.
+      base.damage*=4.25+Math.max(0,w.level-1)*.18;
+      base.cooldown*=.58;
+      base.projectileSpeed=(base.projectileSpeed||720)*1.35;
+      if(base.blast)base.blast*=1.65;
+      if(base.pierce!==undefined)base.pierce+=10;
+      if(base.count)base.count+=4;
+      if(base.orbitCount)base.orbitCount+=4;
+      if(base.orbitRadius)base.orbitRadius*=1.18;
+      if(base.orbitSpeed)base.orbitSpeed*=1.32;
+      if(base.droneCount)base.droneCount+=3;
+      if(base.pull)base.pull*=1.8;
+      base.godOverdrive=true;
+    }
+    if(w.evolution){const e=EVOLUTIONS.find(x=>x.id===w.evolution);if(e){base.name=e.name;for(const [k,v] of Object.entries(e.mods)){if(k==="damage"||k==="cooldown")base[k]*=v;else if(typeof v==="number"&&typeof base[k]==="number")base[k]+=v;else base[k]=v;}if(base.overrideBehavior)base.behavior=base.overrideBehavior;if(e.rarity==="ASCENDED"||base.rarity==="GOD"){base.damage*=2.4;base.cooldown*=.72;base.godOverdrive=true;}}}
     return base;
   }
   function totalDamageMultiplier(enemy=null){let m=game.player.damage*(game.devDamageMultiplier||1);if(game.player.rage>0)m*=1.45;if(game.player.overcharge>0)m*=1.55;if(game.player.moving&&game.passives.MOVING_POWER)m*=1+game.passives.MOVING_POWER*.06;if(game.player.hp/game.player.maxHp<.35&&game.passives.LOW_HP)m*=1+game.passives.LOW_HP*.12;if(game.player.dashBuff>0)m*=1.18;if(enemy?.elite||enemy?.boss){if(save.selectedCharacter==="OVERLORD")m*=1.15;}if(enemy&&save.selectedCharacter==="REAPER"&&enemy.hp/enemy.maxHp<.25)m*=1.2;return m;}
@@ -1004,7 +1031,21 @@
     const b=Object.assign({id:uid(),x:x+Math.cos(angle)*24,y:y+Math.sin(angle)*24,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,r:(d.r||5)*game.player.area,damage,color:d.color||RARITIES[d.rarity].color,life:d.life||2.2,enemy:false,pierce:(d.pierce||0)+game.player.pierce,explosive:false,blast:0,status:d.status||null,weaponId:w.id,crit,hitIds:new Set(),returning:false,returned:false,bounces:d.bounces||0},extra);
     game.projectiles.push(b);return b;
   }
-  function beamAttack(x,y,angle,d,w){const max=1500,ex=x+Math.cos(angle)*max,ey=y+Math.sin(angle)*max;game.zones.push({id:uid(),type:"beamFx",x,y,ex,ey,life:.12,color:d.color,width:10*game.player.area});for(const e of game.enemies){if(e.dead||e.invulnerable)continue;const dx=e.x-x,dy=e.y-y,t=clamp((dx*Math.cos(angle)+dy*Math.sin(angle))/max,0,1),px=x+Math.cos(angle)*max*t,py=y+Math.sin(angle)*max*t;if(Math.hypot(e.x-px,e.y-py)<e.r+12*game.player.area)dealDamage(e,d.damage*totalDamageMultiplier(e),w.id,critRoll(false),d.status);}}
+  function beamAttack(x,y,angle,d,w){
+    const god=d.rarity==="GOD"||d.godOverdrive;
+    const max=Math.max(1800,Math.hypot(game.world.w,game.world.h)*1.15);
+    const shots=god?3:1;
+    for(let s=0;s<shots;s++){
+      const a=angle+(s-(shots-1)/2)*(god?.11:0);
+      const ex=x+Math.cos(a)*max,ey=y+Math.sin(a)*max;
+      game.zones.push({id:uid(),type:"beamFx",x,y,ex,ey,life:god?.22:.12,color:d.color,width:(god?34:10)*game.player.area});
+      for(const e of game.enemies){
+        if(e.dead||e.invulnerable)continue;
+        const dx=e.x-x,dy=e.y-y,t=clamp((dx*Math.cos(a)+dy*Math.sin(a))/max,0,1),px=x+Math.cos(a)*max*t,py=y+Math.sin(a)*max*t;
+        if(Math.hypot(e.x-px,e.y-py)<e.r+(god?38:12)*game.player.area)dealDamage(e,d.damage*totalDamageMultiplier(e)*(god?1.35:1),w.id,critRoll(false),d.status);
+      }
+    }
+  }
   function meleeAttack(angle,d,w){const range=(d.meleeRange||80)*game.player.area,arc=d.arc||1.2;game.zones.push({id:uid(),type:"slashFx",x:game.player.x,y:game.player.y,angle,range,arc,life:.18,color:d.color});for(const e of game.enemies){if(e.dead||e.invulnerable)continue;const a=angleTo(game.player,e),diff=Math.atan2(Math.sin(a-angle),Math.cos(a-angle));if(Math.abs(diff)<=arc/2&&dist(game.player,e)<=range+e.r)dealDamage(e,d.damage*totalDamageMultiplier(e),w.id,critRoll(false),d.status);}}
   function chainAttack(start,d,w){if(!start)return;const hit=[],max=2+Math.floor(game.player.chain)+(w.level>5?1:0);let current=start;for(let i=0;i<max&&current;i++){hit.push(current);dealDamage(current,d.damage*totalDamageMultiplier(current)*Math.pow(.82,i),w.id,critRoll(true),d.status);const next=game.enemies.filter(e=>!e.dead&&!hit.includes(e)&&dist2(e,current)<220*220).sort((a,b)=>dist2(a,current)-dist2(b,current))[0];if(next)game.zones.push({id:uid(),type:"lineFx",x:current.x,y:current.y,ex:next.x,ey:next.y,life:.12,color:d.color,width:3});current=next;}}
   function bounceAttack(start,d,w){if(!start)return;const hit=[];let current=start;for(let i=0;i<(d.bounces||3)+1&&current;i++){hit.push(current);dealDamage(current,d.damage*totalDamageMultiplier(current)*Math.pow(.88,i),w.id,critRoll(true),d.status);const next=game.enemies.filter(e=>!e.dead&&!hit.includes(e)&&dist2(e,current)<240*240).sort((a,b)=>dist2(a,current)-dist2(b,current))[0];current=next;}}
@@ -1012,13 +1053,64 @@
   function placeTrap(d,w){game.traps.push({id:uid(),x:game.player.x,y:game.player.y,r:13,life:16,armed:.35,damage:d.damage*totalDamageMultiplier(),blast:(d.blast||90)*game.player.area,status:d.status,weaponId:w.id,color:d.color});}
   function mirrorAttack(d,w){const manual=game.weapons.find(x=>x.id!==w.id&&effectiveWeapon(x).behavior.startsWith("manual"));if(manual){const md=effectiveWeapon(manual);const copy=Object.assign({},md,{damage:md.damage*.55,cooldown:d.cooldown});fireWeapon(w,copy);}else spawnPlayerBullet(game.player.x,game.player.y,input.aimAngle,d,w);}
   function creatorWeaponAttack(d,w){const mode=Math.floor(game.elapsed/4)%3;if(mode===0)beamAttack(game.player.x,game.player.y,input.aimAngle,d,w);else if(mode===1){for(let i=-2;i<=2;i++)spawnPlayerBullet(game.player.x,game.player.y,input.aimAngle+i*.16,d,w,{pierce:3});}else{const t=targetEnemy("cluster");if(t)createPlayerZone(t.x,t.y,d,w);}}
-  function judgmentAttack(d,w){w.alt=!w.alt;if(w.alt)beamAttack(game.player.x,game.player.y,input.aimAngle,d,w);else for(let i=-2;i<=2;i++)spawnPlayerBullet(game.player.x,game.player.y,input.aimAngle+i*.19,d,w,{explosive:true,blast:d.blast});}
+  function judgmentAttack(d,w){
+    w.alt=!w.alt;
+    if(w.alt){
+      beamAttack(game.player.x,game.player.y,input.aimAngle,d,w);
+      for(let i=0;i<8;i++)spawnPlayerBullet(game.player.x,game.player.y,i*TAU/8,Object.assign({},d,{damage:d.damage*.55}),w,{pierce:8,explosive:true,blast:d.blast*.75});
+    }else{
+      const n=d.count||13;
+      for(let i=0;i<n;i++){
+        const spread=(i-(n-1)/2)*.095;
+        spawnPlayerBullet(game.player.x,game.player.y,input.aimAngle+spread,d,w,{pierce:d.pierce,explosive:true,blast:d.blast});
+      }
+    }
+  }
   function gambleAttack(d,w){const r=Math.random();const mod=Object.assign({},d);if(r<.2){mod.damage*=2.5;beamAttack(game.player.x,game.player.y,input.aimAngle,mod,w);}else if(r<.4){for(let i=0;i<8;i++)spawnPlayerBullet(game.player.x,game.player.y,i*TAU/8,mod,w);}else if(r<.6){const t=targetEnemy("cluster");if(t)createPlayerZone(t.x,t.y,Object.assign(mod,{zoneRadius:110,zoneLife:2.5}),w);}else if(r<.8){for(let i=-3;i<=3;i++)spawnPlayerBullet(game.player.x,game.player.y,input.aimAngle+i*.14,mod,w,{pierce:2});}else{game.player.shield+=18*(1+game.player.shieldPower);}}
   function updateOrbitals(dt,time){
-    for(const w of game.weapons){if(w.disabled>0)continue;const d=effectiveWeapon(w);if(!["orbital","orbitalArc"].includes(d.behavior))continue;const count=(d.orbitCount||1)+Math.floor(w.level/4),radius=(d.orbitRadius||70)*(1+game.player.orbit),speed=(d.orbitSpeed||2)*(1+game.player.orbit*.4);for(let i=0;i<count;i++){const a=time*speed+i*TAU/count,ox=game.player.x+Math.cos(a)*radius,oy=game.player.y+Math.sin(a)*radius;for(const e of game.enemies){if(e.dead||e.invulnerable)continue;const key=e.id+":"+i,last=w.orbitHits[key]||0;if(Math.hypot(e.x-ox,e.y-oy)<e.r+10*game.player.area&&time-last>.28){w.orbitHits[key]=time;dealDamage(e,d.damage*totalDamageMultiplier(e)*.42,w.id,critRoll(true),d.status);if(d.pull&&!e.boss){const an=angleTo(e,game.player);e.x+=Math.cos(an)*d.pull*dt;e.y+=Math.sin(an)*d.pull*dt;}}}if(d.behavior==="orbitalArc"&&Math.floor(time*2+i)%8===0){const t=targetEnemy("nearest",{x:ox,y:oy});if(t&&dist2(t,{x:ox,y:oy})<260*260)dealDamage(t,d.damage*.25*totalDamageMultiplier(t),w.id,false,"shock");}}}
+    for(const w of game.weapons){
+      if(w.disabled>0)continue;
+      const d=effectiveWeapon(w);if(!["orbital","orbitalArc"].includes(d.behavior))continue;
+      const god=d.rarity==="GOD"||d.godOverdrive;
+      const count=(d.orbitCount||1)+Math.floor(w.level/(god?2:4));
+      const radius=(d.orbitRadius||70)*(1+game.player.orbit);
+      const speed=(d.orbitSpeed||2)*(1+game.player.orbit*.4);
+      const hitDelay=god?.09:.28,hitMult=god?.95:.42;
+      for(let i=0;i<count;i++){
+        const a=time*speed+i*TAU/count,ox=game.player.x+Math.cos(a)*radius,oy=game.player.y+Math.sin(a)*radius;
+        for(const e of game.enemies){
+          if(e.dead||e.invulnerable)continue;
+          const key=e.id+":"+i,last=w.orbitHits[key]||0;
+          if(Math.hypot(e.x-ox,e.y-oy)<e.r+(god?18:10)*game.player.area&&time-last>hitDelay){
+            w.orbitHits[key]=time;dealDamage(e,d.damage*totalDamageMultiplier(e)*hitMult,w.id,critRoll(true),d.status);
+            if(d.pull&&!e.boss){const an=angleTo(e,game.player);e.x+=Math.cos(an)*d.pull*dt;e.y+=Math.sin(an)*d.pull*dt;}
+          }
+        }
+        if((d.behavior==="orbitalArc"||god)&&Math.floor(time*(god?8:2)+i)%8===0){
+          const t=targetEnemy("nearest",{x:ox,y:oy});
+          if(t&&dist2(t,{x:ox,y:oy})<(god?420:260)**2)dealDamage(t,d.damage*(god?.75:.25)*totalDamageMultiplier(t),w.id,false,"shock");
+        }
+      }
+    }
   }
   function updateDrones(dt,time){
-    for(const w of game.weapons){if(w.disabled>0)continue;const d=effectiveWeapon(w);if(!["drone","droneEcho"].includes(d.behavior))continue;const count=(d.droneCount||1)+Math.floor(w.level/5);if(!w.droneTimers)w.droneTimers=[];for(let i=0;i<count;i++){const a=time*.75+i*TAU/count,dx=game.player.x+Math.cos(a)*(52+i*7),dy=game.player.y+Math.sin(a)*(52+i*7);const last=w.droneTimers[i]||-99,cd=Math.max(.12,d.cooldown/(game.player.fireRate*(1+game.player.drone)));if(time-last>=cd){const t=targetEnemy(d.target,{x:dx,y:dy});if(t){w.droneTimers[i]=time;const an=Math.atan2(t.y-dy,t.x-dx);spawnPlayerBullet(dx,dy,an,d,w,{damage:d.damage*totalDamageMultiplier(t)*(1+game.player.drone)});}}}}
+    for(const w of game.weapons){
+      if(w.disabled>0)continue;
+      const d=effectiveWeapon(w);if(!["drone","droneEcho"].includes(d.behavior))continue;
+      const god=d.rarity==="GOD"||d.godOverdrive;
+      const count=(d.droneCount||1)+Math.floor(w.level/(god?2:5));
+      if(!w.droneTimers)w.droneTimers=[];
+      for(let i=0;i<count;i++){
+        const a=time*(god?1.2:.75)+i*TAU/count,dx=game.player.x+Math.cos(a)*(god?76:52+i*7),dy=game.player.y+Math.sin(a)*(god?76:52+i*7);
+        const last=w.droneTimers[i]||-99,cd=Math.max(god?.035:.12,d.cooldown/(game.player.fireRate*(1+game.player.drone)));
+        if(time-last>=cd){
+          const t=targetEnemy(d.target,{x:dx,y:dy});if(!t)continue;
+          w.droneTimers[i]=time;const an=Math.atan2(t.y-dy,t.x-dx);
+          const volley=god?3:1;
+          for(let n=0;n<volley;n++)spawnPlayerBullet(dx,dy,an+(n-(volley-1)/2)*(d.spread||.12),d,w,{damage:d.damage*totalDamageMultiplier(t)*(1+game.player.drone),pierce:(d.pierce||0)+(god?4:0),explosive:god&&n===1,blast:god?90:0});
+        }
+      }
+    }
   }
 
   // ============================================================
@@ -1175,12 +1267,34 @@
     for(const w of game.weapons)if(w.disabledBy===ownerId){w.disabled=0;delete w.disabledBy;}
     game.reverseProjectiles=0;
   }
+  function bossBeamsUnlocked(e){
+    if(e.smallBoss)return !!e.enraged;
+    const phaseNeeded={GATEKEEPER:3,RIFT:3,RAVAGER:4,WORLDBREAKER:3,CREATOR:3};
+    if(phaseNeeded[e.bossType]!==undefined)return e.phase>=phaseNeeded[e.bossType];
+    return !!e.enraged;
+  }
   function addBossBeam(e,o={}){
-    const warn=o.warn??1.05,active=o.active??.62,fade=o.fade??.18;
+    // Early phases use targeted strikes/projectiles. True map beams only arrive later.
+    if(!bossBeamsUnlocked(e)){
+      const p=predictPlayer(.48),baseWidth=o.width??54;
+      const sideOffset=rand(Math.min(120,baseWidth*1.4),-Math.min(120,baseWidth*1.4));
+      return addTargetBlast(e,p.x+Math.cos((o.angle??0)+Math.PI/2)*sideOffset,p.y+Math.sin((o.angle??0)+Math.PI/2)*sideOffset,{
+        warn:Math.max(.55,(o.warn??1.0)*.78),r:clamp(baseWidth*.78,48,105),damage:(o.damage??e.damage)*.9,color:o.color||e.color,source:o.source||`${e.name}: Predicted Strike`
+      });
+    }
+    const special=e.bossType;
+    const widthMult=special==="CREATOR"?2.55:special==="WORLDBREAKER"?2.25:special==="RAVAGER"?1.95:["GATEKEEPER","RIFT"].includes(special)?1.85:1.7;
+    const phaseMult=1+Math.max(0,e.phase-3)*.12+(e.desperation?.18:0);
+    const speedMult=(game.mode==="chaos"?.88:1)*(special==="CREATOR"?.62:special==="WORLDBREAKER"?.68:.74);
+    const warn=Math.max(.34,(o.warn??1.05)*speedMult);
+    const originalActive=o.active??.62;
+    const active=Math.max(.22,originalActive*(o.sweepFrom!==undefined||o.rotateSpeed? .62:.76));
+    const fade=o.fade??.12;
+    const damageMult=(special==="CREATOR"?2.15:special==="WORLDBREAKER"?1.95:special==="RAVAGER"?1.8:1.6)*phaseMult;
     game.zones.push({id:uid(),type:"bossBeam",ownerBossId:e.id,sequenceId:e.sequenceId,age:0,life:warn+active+fade,
-      x:o.x??game.world.w/2,y:o.y??game.world.h/2,angle:o.angle??0,length:o.length??Math.hypot(game.world.w,game.world.h)*1.25,
-      width:o.width??54,warn,active,fade,damage:o.damage??e.damage,tickRate:o.tickRate??.32,nextHit:0,color:o.color||e.color,
-      source:o.source||`${e.name}: ${e.attackName||"Beam"}`,sweepFrom:o.sweepFrom,sweepTo:o.sweepTo,rotateSpeed:o.rotateSpeed||0});
+      x:o.x??game.world.w/2,y:o.y??game.world.h/2,angle:o.angle??0,length:o.length??Math.hypot(game.world.w,game.world.h)*1.55,
+      width:(o.width??54)*widthMult*phaseMult,warn,active,fade,damage:(o.damage??e.damage)*damageMult,tickRate:Math.max(.18,(o.tickRate??.32)*.72),nextHit:0,color:o.color||e.color,
+      source:o.source||`${e.name}: ${e.attackName||"Beam"}`,sweepFrom:o.sweepFrom,sweepTo:o.sweepTo,rotateSpeed:(o.rotateSpeed||0)*(1/speedMult)});
   }
   function addTargetBlast(e,x,y,o={}){
     game.zones.push({id:uid(),type:"bossTarget",ownerBossId:e.id,sequenceId:e.sequenceId,age:0,life:(o.warn??.9)+(o.active??.18),
@@ -1206,8 +1320,10 @@
   function spawnBossMinion(e,type,x,y,life=12){const n=spawnEnemy(type,false,0,1);n.x=clamp(x,40,game.world.w-40);n.y=clamp(y,40,game.world.h-40);n.summoned=true;n.bossOwner=e.id;n.expireTimer=life;n.xp=0;n.hp*=.55;n.maxHp=n.hp;return n;}
   function chooseBossMove(e,moves){const recent=e.recentAttacks.slice(-2),valid=moves.filter(m=>!recent.includes(m)),move=pick(valid.length?valid:moves);e.recentAttacks.push(move);if(e.recentAttacks.length>5)e.recentAttacks.shift();return move;}
   function startBossSequence(e,name,duration,recovery,build){
-    e.sequenceId=++game.bossSequenceCounter;e.attackName=name;e.attackTimer=duration+recovery;e.bossEvents.length=0;build();
-    bossSchedule(e,duration,()=>{e.attackName="RECOVERY";});
+    const lateBeamPhase=bossBeamsUnlocked(e);
+    const pace=lateBeamPhase?(game.mode==="chaos"?.76:.84):1;
+    e.sequenceId=++game.bossSequenceCounter;e.attackName=name;e.attackTimer=duration*pace+recovery*(lateBeamPhase?.58:1);e.bossEvents.length=0;build();
+    bossSchedule(e,duration*pace,()=>{e.attackName="RECOVERY";});
   }
   function startCharge(e,angle,speedMult=5,duration=.5){e.dashTimer=duration;e.dashVx=Math.cos(angle)*e.speed*speedMult;e.dashVy=Math.sin(angle)*e.speed*speedMult;}
   function enterObjectivePhase(e,title,nodeCount,layout){
@@ -1293,7 +1409,7 @@
     else startBossSequence(e,move,4.5,.8,()=>{addBossMargin(e,"left",{depth:210,warn:.7,active:3.6});addBossMargin(e,"right",{depth:210,warn:.7,active:3.6});for(let i=0;i<4;i++)bossSchedule(e,i*.55,()=>{const p=predictPlayer(.45);addTargetBlast(e,p.x,p.y,{warn:.6,r:62});});bossSchedule(e,.4,()=>{addBossBeam(e,{angle:.65,width:58,warn:.65,active:1.5,sweepFrom:.65,sweepTo:-.65});});});
   }
   function runWorldbreaker(e){
-    const moves={1:["CONTINENTAL SWEEP","RUIN RAIN","FAULTLINE"],2:["MOVING CORRIDOR","HORIZON COLLAPSE","MARGIN BEAM"],3:["MERIDIAN GRID","DIAGONAL SEVER","ROTATING QUADRANTS"],4:["SHATTERED COMPASS","RAVAGER ECHO","WORLD AXIS"],5:["WORLDBREAK","FINAL HORIZON"]};
+    const moves={1:["RUIN RAIN","FAULTLINE","RUIN RAIN"],2:["MOVING CORRIDOR","HORIZON COLLAPSE","MARGIN BEAM"],3:["MERIDIAN GRID","DIAGONAL SEVER","CONTINENTAL SWEEP","ROTATING QUADRANTS"],4:["SHATTERED COMPASS","RAVAGER ECHO","WORLD AXIS","MERIDIAN GRID"],5:["WORLDBREAK","FINAL HORIZON","WORLD AXIS"]};
     const move=chooseBossMove(e,moves[e.phase]||moves[1]);
     if(move==="CONTINENTAL SWEEP"||move==="WORLD AXIS"){startBossSequence(e,move,4.0,1.2,()=>{addBossBeam(e,{angle:move==="WORLD AXIS"?0:-.55,width:72,warn:1.05,active:2.4,sweepFrom:move==="WORLD AXIS"?0:-.55,sweepTo:move==="WORLD AXIS"?Math.PI:.55,damage:e.damage*.85});});}
     else if(move==="RUIN RAIN"||move==="FAULTLINE"){startBossSequence(e,move,3.8,1.1,()=>{for(let i=0;i<5;i++)bossSchedule(e,i*.52,()=>{const p=predictPlayer(.55);addTargetBlast(e,p.x,p.y,{warn:.82,r:76,damage:e.damage*1.2});});});}
@@ -1307,7 +1423,7 @@
     else if(move==="WORLDBREAK"||move==="FINAL HORIZON"){startBossSequence(e,move,5.2,.7,()=>{addBossMargin(e,"top",{depth:180,warn:.7,active:4.3});addBossMargin(e,"bottom",{depth:180,warn:.7,active:4.3});addBossBeam(e,{angle:0,width:76,warn:.75,active:2.4,sweepFrom:-.45,sweepTo:.45});for(let i=0;i<4;i++)bossSchedule(e,.5+i*.75,()=>{const p=predictPlayer(.5);addTargetBlast(e,p.x,p.y,{warn:.6,r:64});});});}
   }
   function runCreator(e){
-    const moves={1:["PERFECT GEOMETRY","REWRITE LINE","TARGET BLUEPRINT"],3:["CORRUPTED RECONSTRUCTION","BOSS ECHOES","DELETE SECTOR"],4:["BROKEN RULES","MOVEMENT ECHO","MIRROR ARENA"],5:["FINAL CREATION","LAST EQUATION","CREATOR DESPERATION"]};
+    const moves={1:["TARGET BLUEPRINT","TARGET BLUEPRINT","PERFECT GEOMETRY"],3:["CORRUPTED RECONSTRUCTION","BOSS ECHOES","DELETE SECTOR","PERFECT GEOMETRY"],4:["BROKEN RULES","MOVEMENT ECHO","MIRROR ARENA","DELETE SECTOR"],5:["FINAL CREATION","LAST EQUATION","CREATOR DESPERATION","DELETE SECTOR"]};
     const move=chooseBossMove(e,moves[e.phase]||moves[1]);
     if(move==="PERFECT GEOMETRY"){startBossSequence(e,move,4.0,1.0,()=>{const safeCol=Math.floor(Math.random()*3),safeRow=Math.floor(Math.random()*3);for(let i=0;i<3;i++)if(i!==safeCol)addBossBeam(e,{x:game.world.w*(.25+i*.25),y:game.world.h/2,angle:Math.PI/2,width:54,warn:1,active:.85,color:"#ffffff"});for(let i=0;i<3;i++)if(i!==safeRow)addBossBeam(e,{x:game.world.w/2,y:game.world.h*(.25+i*.25),angle:0,width:54,warn:1,active:.85,color:"#ffffff"});bossSchedule(e,.55,()=>addBossBeam(e,{angle:pick([.7,-.7]),width:60,warn:.8,active:.8,color:"#d18cff"}));});}
     else if(move==="REWRITE LINE"||move==="DELETE SECTOR"){startBossSequence(e,move,3.6,.9,()=>{const vertical=Math.random()<.5;const pos=vertical?game.world.w*(.2+Math.random()*.6):game.world.h*(.2+Math.random()*.6);addBossBeam(e,{x:vertical?pos:game.world.w/2,y:vertical?game.world.h/2:pos,angle:vertical?Math.PI/2:0,width:move==="DELETE SECTOR"?220:105,warn:1.25,active:1.1,damage:e.damage*1.2,color:"#ffffff"});});}
