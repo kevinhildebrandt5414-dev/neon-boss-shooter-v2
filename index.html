@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  >
   <title>Neon Boss Shooter V2</title>
 
   <style>
@@ -19,10 +22,13 @@
       touch-action: none;
       overscroll-behavior: none;
     }
+
+    canvas {
+      display: block;
+    }
   </style>
 </head>
-
 <body>
-  <script src="./game-v2.js"></script>
+  <script src="./game.js"></script>
 </body>
 </html>
