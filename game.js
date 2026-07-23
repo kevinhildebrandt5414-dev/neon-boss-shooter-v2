@@ -1,5 +1,5 @@
 // NEON BOSS SHOOTER V2 — LATE-BEAM BOSSES + GOD WEAPON OVERDRIVE BUILD
-// Put this file beside index.html and load it with: <script src="game-v2.js"></script>
+// Put this file beside index.html and load it with: <script src="./game.js"></script>
 (() => {
   "use strict";
 
@@ -168,7 +168,56 @@
     }
     return "COMMON";
   }
-  const rarityPower = { COMMON:1, UNCOMMON:1.35, RARE:1.85, EPIC:2.6, LEGENDARY:3.6, MYTHICAL:5, GOD:18, ASCENDED:30 };
+  const rarityPower = { COMMON:1, UNCOMMON:1.35, RARE:1.8, EPIC:2.5, LEGENDARY:3.5, MYTHICAL:5, GOD:8, ASCENDED:12 };
+  const WEAPON_RARITY_BASE = { COMMON:1, UNCOMMON:1.18, RARE:1.42, EPIC:1.75, LEGENDARY:2.2, MYTHICAL:2.9, GOD:4.0, ASCENDED:5.2 };
+  const WEAPON_LEVEL_GROWTH = { COMMON:.12, UNCOMMON:.14, RARE:.16, EPIC:.18, LEGENDARY:.21, MYTHICAL:.25, GOD:.30, ASCENDED:.34 };
+  const BOOK_RARITY_SCALE = { COMMON:1, UNCOMMON:1.18, RARE:1.42, EPIC:1.72, LEGENDARY:2.1, MYTHICAL:2.65, GOD:4, ASCENDED:5 };
+  const PASSIVE_BASE = { DAMAGE:.04, HEALTH:.06, SPEED:.04, FIRE_RATE:.04, AREA:.055, PROJECTILE:.065, CRIT:.0225, CRIT_DAMAGE:.11, PICKUP:.11, XP:.035, ARMOR:1.75, COOLDOWN:.04 };
+  const STAT_PASSIVE_IDS = ["DAMAGE","HEALTH","SPEED","FIRE_RATE","AREA","PROJECTILE","CRIT","CRIT_DAMAGE","PICKUP","XP","ARMOR","COOLDOWN"];
+  function passiveStrength(id){return game.passivePower?.[id] ?? game.passives?.[id] ?? 0;}
+  function passiveBestRank(id){const r=game.passiveBestRarity?.[id]||"COMMON";return RARITIES[r]?.rank||0;}
+  function hasPassiveTier(id,tier){return passiveBestRank(id)>=RARITIES[tier].rank;}
+  function cleanNumber(v,digits=1){const n=Math.round(v*Math.pow(10,digits))/Math.pow(10,digits);return Number.isInteger(n)?String(n):String(n);}
+  function passiveCardDescription(id,rarity){
+    const mult=rarityPower[rarity]||1,p=PASSIVES[id];
+    if(STAT_PASSIVE_IDS.includes(id)){
+      const value=(PASSIVE_BASE[id]||0)*mult;
+      let text;
+      if(id==="ARMOR")text=`+${cleanNumber(value)} armor.`;
+      else text=`+${cleanNumber(value*100)}% ${({DAMAGE:"damage",HEALTH:"maximum HP",SPEED:"movement speed",FIRE_RATE:"attack speed",AREA:"area and projectile size",PROJECTILE:"projectile speed",CRIT:"critical chance",CRIT_DAMAGE:"critical damage",PICKUP:"pickup range",XP:"XP gain",COOLDOWN:"ability cooldown recovery"})[id]}.`;
+      if(rarity==="MYTHICAL")text+=" Adds a secondary Mythical effect.";
+      if(rarity==="GOD")text+=" Unlocks its God mechanic.";
+      return text;
+    }
+    const power=mult;
+    const special={
+      DASH_BLAST:`Dash releases ${Math.min(24,6+Math.floor(power*1.5))} bolts with rarity-scaled damage.`,
+      KILL_EXPLOSION:`Kills have up to ${cleanNumber(Math.min(.75,.06*power)*100)}% chance to create a rarity-scaled explosion.`,
+      MOVING_POWER:`Deal +${cleanNumber(5*power)}% damage while moving.`,
+      LOW_HP:`Deal +${cleanNumber(10*power)}% damage below 35% HP.`,
+      RETURNING:`Projectiles gain up to ${cleanNumber(Math.min(.9,.12*power)*100)}% chance to return once.`,
+      ARMOR_BREAK:`Critical hits apply ${1+Math.floor(power/2.5)} Armor Break stack(s).`,
+      ORBIT_LAUNCH:`Orbitals launch outward more often and hit harder.`,
+      SUMMON_LINK:`Summons inherit +${cleanNumber(10*power)}% more damage and speed.`
+    };
+    let text=special[id]||p?.desc||"Special passive.";
+    if(rarity==="MYTHICAL")text+=" Mythical version gains an extra effect.";
+    if(rarity==="GOD")text+=" God version gains a major effect.";
+    return text;
+  }
+  function bookEffectiveAmount(book){
+    if(!book?.amount)return 0;
+    let v=book.amount*(BOOK_RARITY_SCALE[book.rarity]||1);
+    if(["armor","pierce","chain"].includes(book.stat))v=Math.max(1,Math.round(v));
+    return v;
+  }
+  function bookCardDescription(book){
+    if(!book)return "";
+    if(book.special)return book.desc;
+    const v=bookEffectiveAmount(book);
+    if(["armor","pierce","chain"].includes(book.stat))return `+${cleanNumber(v)} ${book.stat} per level.`;
+    return `+${cleanNumber(v*100)}% ${({damage:"damage",hp:"maximum HP",speed:"movement speed",pickup:"pickup range",fireRate:"attack speed",area:"area size",crit:"critical chance",critDamage:"critical damage",echo:"echo chance",orbit:"orbital power",burn:"burn power",frost:"frost buildup",poison:"poison power",bleed:"bleed power",drone:"drone power",shield:"shield power"})[book.stat]||book.stat} per level.`;
+  }
 
   const SAVE_KEY = "neonBossShooterV2_Release_1";
   const SAVE_VERSION = 2;
@@ -446,6 +495,9 @@
     weapons:[],
     books:[],
     passives:{},
+    passivePower:{},
+    passiveBestRarity:{},
+    godPassiveUses:{},
     abilityEvolved:false,
     startingBonus:null,
     enemies:[],
@@ -740,7 +792,7 @@
   }
   function startRun(mode){
     if(mode==="chaos"&&!save.chaosUnlocked)return;
-    game.mode=mode;game.state="starting";game.wave=1;game.runLevel=1;game.xp=0;game.xpNeed=45;game.rerolls=3;game.tempLuck=(save.selectedCharacter==="GAMBLER"?.25:0);game.weapons=[{id:CHARACTERS[save.selectedCharacter].weapon,level:1,evolution:null,lastShot:-99,alt:false,orbitHits:{}}];game.books=[];game.passives={};game.abilityEvolved=false;game.startingBonus=null;game.enemies=[];game.projectiles=[];game.zones=[];game.traps=[];game.gems=[];game.particles=[];game.numbers=[];game.batches=[];game.batchIndex=0;game.rewardQueue=[];game.bossRewardPending=false;game.specialBoss=null;game.postCreator=false;game.continuePrompted=false;game.pendingEnding=null;game.player=createPlayer();game.camera.x=clamp(game.player.x-innerWidth/2,0,game.world.w-innerWidth);game.camera.y=clamp(game.player.y-innerHeight/2,0,game.world.h-innerHeight);game.runStartedAt=nowSec();game.runStats=newRunStats();game.dev=game.devBoostActive;game.nextWaveDelay=0;generateLandmarks();resetInputs();updateMobileUI();
+    game.mode=mode;game.state="starting";game.wave=1;game.runLevel=1;game.xp=0;game.xpNeed=45;game.rerolls=3;game.tempLuck=(save.selectedCharacter==="GAMBLER"?.25:0);game.weapons=[{id:CHARACTERS[save.selectedCharacter].weapon,level:1,evolution:null,lastShot:-99,alt:false,orbitHits:{}}];game.books=[];game.passives={};game.passivePower={};game.passiveBestRarity={};game.godPassiveUses={};game.godAttackCounter=0;game.lastGodCritBurst=-99;game.abilityEvolved=false;game.startingBonus=null;game.enemies=[];game.projectiles=[];game.zones=[];game.traps=[];game.gems=[];game.particles=[];game.numbers=[];game.batches=[];game.batchIndex=0;game.rewardQueue=[];game.bossRewardPending=false;game.specialBoss=null;game.postCreator=false;game.continuePrompted=false;game.pendingEnding=null;game.player=createPlayer();game.camera.x=clamp(game.player.x-innerWidth/2,0,game.world.w-innerWidth);game.camera.y=clamp(game.player.y-innerHeight/2,0,game.world.h-innerHeight);game.runStartedAt=nowSec();game.runStats=newRunStats();game.dev=game.devBoostActive;game.nextWaveDelay=0;generateLandmarks();resetInputs();updateMobileUI();
     const bonuses=startingBonusCards(save.selectedCharacter);openChoiceScreen(bonuses,"starting");
   }
   function startingBonusCards(charId){
@@ -769,7 +821,7 @@
     if(!game.player)return;
     game.state="playing";hideOverlay();updateMobileUI();
     game.enemies.length=0;game.projectiles.length=0;game.zones.length=0;game.traps.length=0;game.batches=[];game.batchIndex=0;game.spawnPending=false;game.bossRewardPending=false;game.waveStartedAt=nowSec();game.banner={text:`WAVE ${game.wave}`,sub:game.mode==="chaos"?"CHAOS":"",life:2.2,color:game.mode==="chaos"?"#ff4fdf":"#7dfcff"};
-    if(game.startingBonus==="EMERGENCY")game.player.shield=Math.max(game.player.shield,12);
+    if(game.startingBonus==="EMERGENCY")game.player.shield=Math.max(game.player.shield,12);if(hasPassiveTier("HEALTH","GOD"))game.player.shield=Math.max(game.player.shield,game.player.maxHp*.2);
     if(save.selectedCharacter==="REMNANT"){
       const options=["damage","speed","fireRate","area"];const stat=pick(options);game.player[stat]*=1.01;
     }
@@ -789,31 +841,46 @@
     return game.devLuckOverride>0 ? game.devLuckOverride : save.luck+game.tempLuck;
   }
 
-  function generateCard(bossReward=false,excludedFamilies=new Set()){
-    const luck=currentLuck();
-    const rolled=rollRarity(luck,bossReward);
-    const candidates=[];
-    for(const id of save.unlockedWeapons){const def=WEAPONS[id];if(!def||!rarityAllowed(def.rarity,rolled))continue;const owned=getOwnedWeapon(id);if(owned){if(owned.level<weaponMaxLevel(owned)&&!owned.evolution)candidates.push({kind:"weapon",id,family:"weapon:"+id,rarity:def.rarity,name:def.name,desc:`Upgrade to level ${owned.level+1}/${weaponMaxLevel(owned)}.`});}else if(game.weapons.length<save.slots.weapons)candidates.push({kind:"weapon",id,family:"weapon:"+id,rarity:def.rarity,name:def.name,desc:`Equip: ${def.description}`});}
-    for(const id of save.unlockedBooks){const def=BOOKS[id];if(!def||!rarityAllowed(def.rarity,rolled))continue;const owned=getOwnedBook(id);if(owned){if(owned.level<def.max)candidates.push({kind:"book",id,family:"book:"+id,rarity:def.rarity,name:def.name,desc:`Upgrade to level ${owned.level+1}/${def.max}. ${def.desc}`});}else if(game.books.length<save.slots.books)candidates.push({kind:"book",id,family:"book:"+id,rarity:def.rarity,name:def.name,desc:`Equip: ${def.desc}`});}
-    const statFamilies=["DAMAGE","HEALTH","SPEED","FIRE_RATE","AREA","PROJECTILE","CRIT","CRIT_DAMAGE","PICKUP","XP","ARMOR","COOLDOWN"];
-    for(const id of statFamilies){const p=PASSIVES[id],lv=game.passives[id]||0;if(lv<p.max)candidates.push({kind:"passive",id,family:"passive:"+id,rarity:rolled,name:p.name,desc:p.desc});}
-    for(const [id,p] of Object.entries(PASSIVES)){if(statFamilies.includes(id))continue;const lv=game.passives[id]||0;if(lv<p.max&&RARITIES[rolled].rank>=2)candidates.push({kind:"passive",id,family:"passive:"+id,rarity:rolled,name:p.name,desc:p.desc});}
-    for(const evo of eligibleEvolutions())if(rarityAllowed(evo.rarity,rolled))candidates.push({kind:"evolution",id:evo.id,family:"evolution:"+evo.weapon,rarity:evo.rarity,name:evo.name,desc:evo.desc});
-    if(!game.abilityEvolved&&game.wave>=25&&RARITIES[rolled].rank>=4)candidates.push({kind:"ability",id:"ABILITY_EVOLUTION",family:"ability",rarity:rolled,name:"Ability Evolution",desc:"Transform this character's active ability."});
-    const valid=candidates.filter(c=>!excludedFamilies.has(c.family));
-    if(!valid.length){const id=pick(statFamilies);const p=PASSIVES[id];return {kind:"passive",id,family:"fallback:"+id,rarity:rolled,name:p.name,desc:p.desc};}
-    const exact=valid.filter(c=>c.rarity===rolled);
-    if(rolled==="GOD"){
-      const trueGod=exact.filter(c=>["weapon","book","evolution"].includes(c.kind));
-      if(trueGod.length&&Math.random()<.82)return pick(trueGod);
-    }
-    if(rolled==="MYTHICAL"){
-      const premium=exact.filter(c=>["weapon","book","evolution"].includes(c.kind));
-      if(premium.length&&Math.random()<.45)return pick(premium);
-    }
-    return pick(exact.length?exact:valid);
+  function chooseRarityMatched(list,rolled){
+    if(!list.length)return null;
+    const exact=list.filter(c=>c.rarity===rolled);
+    if(exact.length)return pick(exact);
+    const eligible=list.filter(c=>rarityAllowed(c.rarity,rolled));
+    if(!eligible.length)return null;
+    const highest=Math.max(...eligible.map(c=>RARITIES[c.rarity].rank));
+    return pick(eligible.filter(c=>RARITIES[c.rarity].rank===highest));
   }
-  function makeThreeChoices(bossReward=false,excludeIds=[]){const out=[],families=new Set(),ids=new Set(excludeIds);let guard=0;while(out.length<3&&guard++<100){const c=generateCard(bossReward,families);if(ids.has(c.id))continue;out.push(c);families.add(c.family);ids.add(c.id);}while(out.length<3){const id=["DAMAGE","HEALTH","SPEED"][out.length];out.push({kind:"passive",id,family:"safe:"+id,rarity:"COMMON",name:PASSIVES[id].name,desc:PASSIVES[id].desc});}return out;}
+  function generateCard(bossReward=false,excludedFamilies=new Set()){
+    const rolled=rollRarity(currentLuck(),bossReward);
+    const weapons=[],books=[],passives=[],special=[];
+    for(const id of save.unlockedWeapons){
+      const def=WEAPONS[id];if(!def||!rarityAllowed(def.rarity,rolled))continue;
+      const owned=getOwnedWeapon(id);
+      if(owned){
+        if(owned.level<weaponMaxLevel(owned)&&!owned.evolution)weapons.push({kind:"weapon",id,family:"weapon:"+id,rarity:def.rarity,name:def.name,desc:`Upgrade to level ${owned.level+1}/${weaponMaxLevel(owned)}. ${def.description}`});
+      }else if(game.weapons.length<save.slots.weapons)weapons.push({kind:"weapon",id,family:"weapon:"+id,rarity:def.rarity,name:def.name,desc:`Equip: ${def.description}`});
+    }
+    for(const id of save.unlockedBooks){
+      const def=BOOKS[id];if(!def||!rarityAllowed(def.rarity,rolled))continue;
+      const owned=getOwnedBook(id),desc=bookCardDescription(def);
+      if(owned){if(owned.level<def.max)books.push({kind:"book",id,family:"book:"+id,rarity:def.rarity,name:def.name,desc:`Upgrade to level ${owned.level+1}/${def.max}. ${desc}`});}
+      else if(game.books.length<save.slots.books)books.push({kind:"book",id,family:"book:"+id,rarity:def.rarity,name:def.name,desc:`Equip: ${desc}`});
+    }
+    for(const id of STAT_PASSIVE_IDS){const p=PASSIVES[id],lv=game.passives[id]||0;if(lv<p.max)passives.push({kind:"passive",id,family:"passive:"+id,rarity:rolled,name:p.name,desc:passiveCardDescription(id,rolled)});}
+    for(const [id,p] of Object.entries(PASSIVES)){if(STAT_PASSIVE_IDS.includes(id))continue;const lv=game.passives[id]||0;if(lv<p.max&&RARITIES[rolled].rank>=2)passives.push({kind:"passive",id,family:"passive:"+id,rarity:rolled,name:p.name,desc:passiveCardDescription(id,rolled)});}
+    for(const evo of eligibleEvolutions())if(rarityAllowed(evo.rarity,rolled))special.push({kind:"evolution",id:evo.id,family:"evolution:"+evo.weapon,rarity:evo.rarity,name:evo.name,desc:evo.desc});
+    if(!game.abilityEvolved&&game.wave>=25&&RARITIES[rolled].rank>=4)special.push({kind:"ability",id:"ABILITY_EVOLUTION",family:"ability",rarity:rolled,name:"Ability Evolution",desc:"Transform this character's active ability."});
+    const groups=[
+      {kind:"weapon",weight:28,list:weapons},
+      {kind:"book",weight:22,list:books},
+      {kind:"passive",weight:40,list:passives},
+      {kind:"special",weight:10,list:special}
+    ].map(g=>({...g,list:g.list.filter(c=>!excludedFamilies.has(c.family))})).filter(g=>g.list.length);
+    if(!groups.length){const id=pick(STAT_PASSIVE_IDS),p=PASSIVES[id];return {kind:"passive",id,family:"fallback:"+id,rarity:rolled,name:p.name,desc:passiveCardDescription(id,rolled)};}
+    const group=weighted(groups,g=>g.weight);
+    return chooseRarityMatched(group.list,rolled)||pick(group.list);
+  }
+  function makeThreeChoices(bossReward=false,excludeIds=[]){const out=[],families=new Set(),ids=new Set(excludeIds);let guard=0;while(out.length<3&&guard++<100){const c=generateCard(bossReward,families);if(ids.has(c.id))continue;out.push(c);families.add(c.family);ids.add(c.id);}while(out.length<3){const id=["DAMAGE","HEALTH","SPEED"][out.length];out.push({kind:"passive",id,family:"safe:"+id,rarity:"COMMON",name:PASSIVES[id].name,desc:passiveCardDescription(id,"COMMON")});}return out;}
   function openChoiceScreen(cards,context="level"){
     game.state="choice";game.currentChoices=cards;game.choiceContext=context;resetInputs();updateMobileUI();
     const cardHtml=cards.map((c,i)=>{const r=RARITIES[c.rarity]||RARITIES.COMMON;return `<div class="nbs-card" style="--rarity:${r.color}" data-action="choose:${i}"><div class="diamonds">${"◆".repeat(Math.min(8,r.diamonds))}</div><div class="rarity">${r.name} • ${c.kind.toUpperCase()}</div><h3>${escapeHtml(c.name)}</h3><p class="desc">${escapeHtml(c.desc)}</p><p class="details">Click to choose • Key ${i+1}</p></div>`}).join("");
@@ -825,7 +892,14 @@
     if(c.kind==="start")c.apply();
     if(c.kind==="weapon"){const owned=getOwnedWeapon(c.id);if(owned)owned.level=Math.min(weaponMaxLevel(owned),owned.level+1);else game.weapons.push({id:c.id,level:1,evolution:null,lastShot:-99,alt:false,orbitHits:{}});}
     if(c.kind==="book"){const owned=getOwnedBook(c.id);if(owned)owned.level++;else game.books.push({id:c.id,level:1});applyBook(c.id);}
-    if(c.kind==="passive"){game.passives[c.id]=(game.passives[c.id]||0)+1;applyPassive(c.id,c.rarity);}
+    if(c.kind==="passive"){
+      game.passives[c.id]=(game.passives[c.id]||0)+1;
+      game.passivePower[c.id]=(game.passivePower[c.id]||0)+(rarityPower[c.rarity]||1);
+      const old=game.passiveBestRarity[c.id]||"COMMON";
+      if(RARITIES[c.rarity].rank>RARITIES[old].rank)game.passiveBestRarity[c.id]=c.rarity;
+      else if(!game.passiveBestRarity[c.id])game.passiveBestRarity[c.id]=c.rarity;
+      applyPassive(c.id,c.rarity);
+    }
     if(c.kind==="evolution"){const e=EVOLUTIONS.find(x=>x.id===c.id),w=getOwnedWeapon(e.weapon);if(w)w.evolution=e.id;}
     if(c.kind==="ability")game.abilityEvolved=true;
     hideOverlay();
@@ -846,12 +920,20 @@
     game.state="playing";updateMobileUI();processRewardQueue();
   }
   function applyBook(id){const b=BOOKS[id];if(!b)return;if(b.special==="luck")game.tempLuck=Math.min(4-save.luck,game.tempLuck+.5);if(b.special==="reroll")game.rerolls++;if(b.special==="vampire")game.player.vampire=true;if(b.special==="revive")game.player.revive=true;if(b.special==="divinity")game.player.divinity=true;recalculateBookStats();}
-  function recalculateBookStats(){const p=game.player;if(!p)return;const hpRatio=clamp(p.hp/Math.max(1,p.maxHp),0,1);p.damage=baseRunStat("damage");p.maxHp=baseRunStat("hp");p.hp=Math.min(p.maxHp,p.maxHp*hpRatio);p.speed=baseRunStat("speed");p.armor=baseRunStat("armor");p.fireRate=baseRunStat("fireRate");p.pickup=baseRunStat("pickup");p.xpGain=baseRunStat("xp");p.area=1;p.projectileSpeed=1;p.cooldownMult=1;p.crit=.05;p.critDamage=1.75;p.pierce=0;p.echo=0;p.orbit=0;p.chain=0;p.burn=0;p.frost=0;p.poison=0;p.bleed=0;p.drone=0;p.shieldPower=0;
-    const char=CHARACTERS[save.selectedCharacter];if(save.selectedCharacter==="BLAZE")p.burn+=.25;if(save.selectedCharacter==="VOID")p.orbit+=.12;if(save.selectedCharacter==="ENGINEER")p.drone+=.18;if(save.selectedCharacter==="CRYO")p.frost+=.25;
-    for(const ob of game.books){const b=BOOKS[ob.id],n=ob.level;if(!b?.stat)continue;const v=b.amount*n;if(b.stat==="damage")p.damage*=1+v;if(b.stat==="hp"){const ratio=p.hp/p.maxHp;p.maxHp=baseRunStat("hp")*(1+v);p.hp=Math.min(p.maxHp,p.maxHp*ratio);}if(b.stat==="speed")p.speed*=1+v;if(b.stat==="pickup")p.pickup*=1+v;if(b.stat==="armor")p.armor+=v;if(b.stat==="fireRate")p.fireRate*=1+v;if(b.stat==="area")p.area*=1+v;if(b.stat==="crit")p.crit+=v;if(b.stat==="critDamage")p.critDamage+=v;if(b.stat==="pierce")p.pierce+=v;if(b.stat==="echo")p.echo+=v;if(b.stat==="orbit")p.orbit+=v;if(b.stat==="chain")p.chain+=v;if(b.stat==="burn")p.burn+=v;if(b.stat==="frost")p.frost+=v;if(b.stat==="poison")p.poison+=v;if(b.stat==="bleed")p.bleed+=v;if(b.stat==="drone")p.drone+=v;if(b.stat==="shield")p.shieldPower+=v;}
-    for(const [id,lv] of Object.entries(game.passives))applyPassiveStatOnly(id,lv);
+  function recalculateBookStats(){const p=game.player;if(!p)return;const hpRatio=clamp(p.hp/Math.max(1,p.maxHp),0,1);p.damage=baseRunStat("damage");p.maxHp=baseRunStat("hp");p.hp=Math.min(p.maxHp,p.maxHp*hpRatio);p.speed=baseRunStat("speed");p.armor=baseRunStat("armor");p.fireRate=baseRunStat("fireRate");p.pickup=baseRunStat("pickup");p.xpGain=baseRunStat("xp");p.area=1;p.projectileSpeed=1;p.cooldownMult=1;p.crit=.05;p.critDamage=1.75;p.pierce=0;p.echo=0;p.orbit=0;p.chain=0;p.burn=0;p.frost=0;p.poison=0;p.bleed=0;p.drone=0;p.shieldPower=0;p.mythArmorPen=0;p.godDamage=false;p.godArea=false;p.godCrit=false;p.godSpeed=false;p.godXp=false;p.godDefense=false;
+    if(save.selectedCharacter==="BLAZE")p.burn+=.25;if(save.selectedCharacter==="VOID")p.orbit+=.12;if(save.selectedCharacter==="ENGINEER")p.drone+=.18;if(save.selectedCharacter==="CRYO")p.frost+=.25;
+    for(const ob of game.books){const b=BOOKS[ob.id],n=ob.level;if(!b?.stat)continue;const v=bookEffectiveAmount(b)*n;if(b.stat==="damage")p.damage*=1+v;if(b.stat==="hp"){const ratio=p.hp/p.maxHp;p.maxHp=baseRunStat("hp")*(1+v);p.hp=Math.min(p.maxHp,p.maxHp*ratio);}if(b.stat==="speed")p.speed*=1+v;if(b.stat==="pickup")p.pickup*=1+v;if(b.stat==="armor")p.armor+=v;if(b.stat==="fireRate")p.fireRate*=1+v;if(b.stat==="area")p.area*=1+v;if(b.stat==="crit")p.crit+=v;if(b.stat==="critDamage")p.critDamage+=v;if(b.stat==="pierce")p.pierce+=v;if(b.stat==="echo")p.echo+=v;if(b.stat==="orbit")p.orbit+=v;if(b.stat==="chain")p.chain+=v;if(b.stat==="burn")p.burn+=v;if(b.stat==="frost")p.frost+=v;if(b.stat==="poison")p.poison+=v;if(b.stat==="bleed")p.bleed+=v;if(b.stat==="drone")p.drone+=v;if(b.stat==="shield")p.shieldPower+=v;}
+    for(const [id,lv] of Object.entries(game.passives))applyPassiveStatOnly(id,game.passivePower?.[id]??lv);
+    if(hasPassiveTier("DAMAGE","MYTHICAL"))p.mythArmorPen=.2;if(hasPassiveTier("DAMAGE","GOD")){p.mythArmorPen=.35;p.godDamage=true;}
+    if(hasPassiveTier("FIRE_RATE","GOD"))p.echo+=.22;
+    if(hasPassiveTier("AREA","GOD"))p.godArea=true;
+    if(hasPassiveTier("CRIT","GOD")||hasPassiveTier("CRIT_DAMAGE","GOD"))p.godCrit=true;
+    if(hasPassiveTier("SPEED","GOD"))p.godSpeed=true;
+    if(hasPassiveTier("PICKUP","GOD")||hasPassiveTier("XP","GOD"))p.godXp=true;
+    if(hasPassiveTier("ARMOR","GOD")||hasPassiveTier("HEALTH","GOD"))p.godDefense=!game.godPassiveUses.ARMOR;
+    if(game.player.divinity){p.damage*=1.75;p.fireRate*=1.16;p.area*=1.2;p.pierce+=3;}
   }
-  function applyPassiveStatOnly(id,lv){const p=game.player;if(!p||!lv)return;const per={DAMAGE:.045,HEALTH:.06,SPEED:.04,FIRE_RATE:.045,AREA:.06,PROJECTILE:.07,CRIT:.025,CRIT_DAMAGE:.12,PICKUP:.12,XP:.04,ARMOR:2,COOLDOWN:.045};if(id==="DAMAGE")p.damage*=1+per[id]*lv;if(id==="HEALTH"){const ratio=p.hp/p.maxHp;p.maxHp*=1+per[id]*lv;p.hp=Math.min(p.maxHp,p.maxHp*ratio);}if(id==="SPEED")p.speed*=1+per[id]*lv;if(id==="FIRE_RATE")p.fireRate*=1+per[id]*lv;if(id==="AREA")p.area*=1+per[id]*lv;if(id==="PROJECTILE")p.projectileSpeed*=1+per[id]*lv;if(id==="CRIT")p.crit+=per[id]*lv;if(id==="CRIT_DAMAGE")p.critDamage+=per[id]*lv;if(id==="PICKUP")p.pickup*=1+per[id]*lv;if(id==="XP")p.xpGain*=1+per[id]*lv;if(id==="ARMOR")p.armor+=per[id]*lv;if(id==="COOLDOWN")p.cooldownMult=Math.max(.7,1-per[id]*lv);}
+  function applyPassiveStatOnly(id,strength){const p=game.player;if(!p||!strength||!PASSIVE_BASE[id])return;const v=PASSIVE_BASE[id]*strength;if(id==="DAMAGE")p.damage*=1+v;if(id==="HEALTH"){const ratio=p.hp/p.maxHp;p.maxHp*=1+v;p.hp=Math.min(p.maxHp,p.maxHp*ratio);}if(id==="SPEED")p.speed*=1+v;if(id==="FIRE_RATE")p.fireRate*=1+v;if(id==="AREA")p.area*=1+v;if(id==="PROJECTILE")p.projectileSpeed*=1+v;if(id==="CRIT")p.crit+=v;if(id==="CRIT_DAMAGE")p.critDamage+=v;if(id==="PICKUP")p.pickup*=1+v;if(id==="XP")p.xpGain*=1+v;if(id==="ARMOR")p.armor+=v;if(id==="COOLDOWN")p.cooldownMult=Math.max(.45,1-v);}
   function applyPassive(id){recalculateBookStats();}
   function gainXp(amount){if(game.state!=="playing")return;game.xp+=amount*game.player.xpGain;while(game.xp>=game.xpNeed){game.xp-=game.xpNeed;game.runLevel++;game.runStats.levels++;game.xpNeed=Math.floor(42+Math.pow(game.runLevel,1.58)*15);game.rewardQueue.push({type:"level"});}processRewardQueue();}
   function processRewardQueue(){if(game.state!=="playing"||!game.rewardQueue.length)return;const r=game.rewardQueue.shift();if(r.type==="level")openChoiceScreen(makeThreeChoices(false),"level");}
@@ -971,8 +1053,13 @@
     const base=Object.assign({},WEAPONS[w.id]);
     base.level=w.level;
     const rank=RARITIES[base.rarity].rank;
-    const scale=1+(w.level-1)*(.14+rank*.012);
-    base.damage*=scale;base.cooldown/=1+(w.level-1)*.035;
+    const baseMult=WEAPON_RARITY_BASE[base.rarity]||1;
+    const growth=WEAPON_LEVEL_GROWTH[base.rarity]||.12;
+    const scale=baseMult*(1+(w.level-1)*growth);
+    base.damage*=scale;base.cooldown/=1+(w.level-1)*(growth*.22);
+    if(w.level>=3&&rank>=3){if(base.pierce!==undefined)base.pierce+=1;if(base.count)base.count+=1;}
+    if(w.level>=6&&rank>=4){base.damage*=1.18;if(base.blast)base.blast*=1.18;}
+    if(w.level>=9&&rank>=5){base.cooldown*=.86;base.damage*=1.25;}
     if(base.rarity==="GOD"){
       // God weapons should feel run-defining immediately, not like slightly better Epics.
       base.damage*=4.25+Math.max(0,w.level-1)*.18;
@@ -988,10 +1075,11 @@
       if(base.pull)base.pull*=1.8;
       base.godOverdrive=true;
     }
+    if(game.player.divinity){base.damage*=1.35;base.cooldown*=.9;if(base.pierce!==undefined)base.pierce+=2;}
     if(w.evolution){const e=EVOLUTIONS.find(x=>x.id===w.evolution);if(e){base.name=e.name;for(const [k,v] of Object.entries(e.mods)){if(k==="damage"||k==="cooldown")base[k]*=v;else if(typeof v==="number"&&typeof base[k]==="number")base[k]+=v;else base[k]=v;}if(base.overrideBehavior)base.behavior=base.overrideBehavior;if(e.rarity==="ASCENDED"||base.rarity==="GOD"){base.damage*=2.4;base.cooldown*=.72;base.godOverdrive=true;}}}
     return base;
   }
-  function totalDamageMultiplier(enemy=null){let m=game.player.damage*(game.devDamageMultiplier||1);if(game.player.rage>0)m*=1.45;if(game.player.overcharge>0)m*=1.55;if(game.player.moving&&game.passives.MOVING_POWER)m*=1+game.passives.MOVING_POWER*.06;if(game.player.hp/game.player.maxHp<.35&&game.passives.LOW_HP)m*=1+game.passives.LOW_HP*.12;if(game.player.dashBuff>0)m*=1.18;if(enemy?.elite||enemy?.boss){if(save.selectedCharacter==="OVERLORD")m*=1.15;}if(enemy&&save.selectedCharacter==="REAPER"&&enemy.hp/enemy.maxHp<.25)m*=1.2;return m;}
+  function totalDamageMultiplier(enemy=null){let m=game.player.damage*(game.devDamageMultiplier||1);if(game.player.rage>0)m*=1.45;if(game.player.overcharge>0)m*=1.55;if(game.player.moving&&game.passives.MOVING_POWER)m*=1+passiveStrength("MOVING_POWER")*.05;if(game.player.hp/game.player.maxHp<.35&&game.passives.LOW_HP)m*=1+passiveStrength("LOW_HP")*.10;if(game.player.dashBuff>0)m*=1.18;if(enemy?.elite||enemy?.boss){if(save.selectedCharacter==="OVERLORD")m*=1.15;}if(enemy&&save.selectedCharacter==="REAPER"&&enemy.hp/enemy.maxHp<.25)m*=1.2;return m;}
   function critRoll(rapid=false){const chance=game.player.crit*(rapid?.45:1);return Math.random()<chance;}
   function fireWeapons(dt,time){
     if(game.state!=="playing")return;
@@ -1027,8 +1115,10 @@
   }
   function spawnPlayerBullet(x,y,angle,d,w,extra={}){
     const speed=(d.projectileSpeed||720)*game.player.projectileSpeed;
-    const crit=critRoll(d.cooldown<.16),damage=d.damage*totalDamageMultiplier()* (crit?game.player.critDamage:1);
-    const b=Object.assign({id:uid(),x:x+Math.cos(angle)*24,y:y+Math.sin(angle)*24,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,r:(d.r||5)*game.player.area,damage,color:d.color||RARITIES[d.rarity].color,life:d.life||2.2,enemy:false,pierce:(d.pierce||0)+game.player.pierce,explosive:false,blast:0,status:d.status||null,weaponId:w.id,crit,hitIds:new Set(),returning:false,returned:false,bounces:d.bounces||0},extra);
+    const crit=critRoll(d.cooldown<.16);let damage=d.damage*totalDamageMultiplier()* (crit?game.player.critDamage:1);
+    game.godAttackCounter=(game.godAttackCounter||0)+1;const divine=game.player.godDamage&&game.godAttackCounter%10===0;if(divine)damage*=3.25;
+    const returnChance=Math.min(.9,.12*passiveStrength("RETURNING"));
+    const b=Object.assign({id:uid(),x:x+Math.cos(angle)*24,y:y+Math.sin(angle)*24,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,r:(d.r||5)*game.player.area*(divine?1.55:1),damage,color:divine?"#ffffff":(d.color||RARITIES[d.rarity].color),life:d.life||2.2,enemy:false,pierce:(d.pierce||0)+game.player.pierce+(divine?4:0),explosive:divine,blast:divine?110*game.player.area:0,status:d.status||null,weaponId:w.id,crit:crit||divine,hitIds:new Set(),returning:returnChance>0&&Math.random()<returnChance,returned:false,bounces:d.bounces||0,divine},extra);
     game.projectiles.push(b);return b;
   }
   function beamAttack(x,y,angle,d,w){
@@ -1086,6 +1176,7 @@
             if(d.pull&&!e.boss){const an=angleTo(e,game.player);e.x+=Math.cos(an)*d.pull*dt;e.y+=Math.sin(an)*d.pull*dt;}
           }
         }
+        const orbitLaunch=passiveStrength("ORBIT_LAUNCH");if(orbitLaunch>0&&Math.floor(time*(1+orbitLaunch*.35)+i)%12===0){const t=targetEnemy("nearest",{x:ox,y:oy});if(t){const an=Math.atan2(t.y-oy,t.x-ox);spawnPlayerBullet(ox,oy,an,Object.assign({},d,{damage:d.damage*(.25+orbitLaunch*.12),projectileSpeed:760}),w,{pierce:1+Math.floor(orbitLaunch/3)});}}
         if((d.behavior==="orbitalArc"||god)&&Math.floor(time*(god?8:2)+i)%8===0){
           const t=targetEnemy("nearest",{x:ox,y:oy});
           if(t&&dist2(t,{x:ox,y:oy})<(god?420:260)**2)dealDamage(t,d.damage*(god?.75:.25)*totalDamageMultiplier(t),w.id,false,"shock");
@@ -1102,12 +1193,12 @@
       if(!w.droneTimers)w.droneTimers=[];
       for(let i=0;i<count;i++){
         const a=time*(god?1.2:.75)+i*TAU/count,dx=game.player.x+Math.cos(a)*(god?76:52+i*7),dy=game.player.y+Math.sin(a)*(god?76:52+i*7);
-        const last=w.droneTimers[i]||-99,cd=Math.max(god?.035:.12,d.cooldown/(game.player.fireRate*(1+game.player.drone)));
+        const summonLink=passiveStrength("SUMMON_LINK");const last=w.droneTimers[i]||-99,cd=Math.max(god?.035:.12,d.cooldown/(game.player.fireRate*(1+game.player.drone+summonLink*.04)));
         if(time-last>=cd){
           const t=targetEnemy(d.target,{x:dx,y:dy});if(!t)continue;
           w.droneTimers[i]=time;const an=Math.atan2(t.y-dy,t.x-dx);
           const volley=god?3:1;
-          for(let n=0;n<volley;n++)spawnPlayerBullet(dx,dy,an+(n-(volley-1)/2)*(d.spread||.12),d,w,{damage:d.damage*totalDamageMultiplier(t)*(1+game.player.drone),pierce:(d.pierce||0)+(god?4:0),explosive:god&&n===1,blast:god?90:0});
+          for(let n=0;n<volley;n++)spawnPlayerBullet(dx,dy,an+(n-(volley-1)/2)*(d.spread||.12),d,w,{damage:d.damage*totalDamageMultiplier(t)*(1+game.player.drone+summonLink*.10),pierce:(d.pierce||0)+(god?4:0),explosive:god&&n===1,blast:god?90:0});
         }
       }
     }
@@ -1124,7 +1215,7 @@
     p.invuln=Math.max(0,p.invuln-dt);p.ghost=Math.max(0,p.ghost-dt);p.rage=Math.max(0,p.rage-dt);p.overcharge=Math.max(0,p.overcharge-dt);p.timeSlow=Math.max(0,p.timeSlow-dt);p.dashBuff=Math.max(0,p.dashBuff-dt);p.phaseBoost=Math.max(0,p.phaseBoost-dt);p.abilityTimer=Math.max(0,p.abilityTimer-dt);p.dashTimer=Math.max(0,p.dashTimer-dt);
     if(save.selectedCharacter==="VOLT"&&p.moving)p.abilityTimer=Math.max(0,p.abilityTimer-dt*.18);
     if(save.selectedCharacter==="ECLIPSE"){const phase=Math.floor(game.elapsed/6)%2;if(phase===0)p.damagePhase=1.08;else p.damagePhase=1;}
-    if(input.dashPressed){input.dashPressed=false;if(p.dashTimer<=0){p.dashTimer=p.dashCooldown;p.invuln=Math.max(p.invuln,.25);const a=len>.08?Math.atan2(my,mx):input.aimAngle;p.dashX=Math.cos(a);p.dashY=Math.sin(a);p.dashing=p.dashDuration;p.dashBuff=1.3;if(save.selectedCharacter==="GHOST")p.phaseBoost=1.1;if(game.passives.DASH_BLAST){for(let i=0;i<8;i++)game.projectiles.push({id:uid(),x:p.x,y:p.y,vx:Math.cos(i*TAU/8)*650,vy:Math.sin(i*TAU/8)*650,r:4,damage:8*game.passives.DASH_BLAST*totalDamageMultiplier(),color:"#7dfcff",life:1,enemy:false,pierce:1,hitIds:new Set(),weaponId:"DASH"});}sfx(180,.08,"triangle",.06);}}
+    if(input.dashPressed){input.dashPressed=false;if(p.dashTimer<=0){p.dashTimer=p.dashCooldown;p.invuln=Math.max(p.invuln,.25);const a=len>.08?Math.atan2(my,mx):input.aimAngle;p.dashX=Math.cos(a);p.dashY=Math.sin(a);p.dashing=p.dashDuration;p.dashBuff=1.3;if(save.selectedCharacter==="GHOST")p.phaseBoost=1.1;if(game.passives.DASH_BLAST){const pow=passiveStrength("DASH_BLAST"),n=Math.min(24,6+Math.floor(pow*1.5));for(let i=0;i<n;i++)game.projectiles.push({id:uid(),x:p.x,y:p.y,vx:Math.cos(i*TAU/n)*650,vy:Math.sin(i*TAU/n)*650,r:4,damage:(5+6*pow)*totalDamageMultiplier(),color:"#7dfcff",life:1,enemy:false,pierce:1+Math.floor(pow/4),hitIds:new Set(),weaponId:"DASH"});}if(p.godSpeed)explodeAt(p.x,p.y,105,24*totalDamageMultiplier(),"GOD_SPEED",null);sfx(180,.08,"triangle",.06);}}
     if(p.dashing>0){p.x+=p.dashX*p.dashSpeed*dt;p.y+=p.dashY*p.dashSpeed*dt;p.dashing-=dt;}else{const speed=p.speed*(p.phaseBoost>0?1.15:1);p.x+=mx*speed*dt;p.y+=my*speed*dt;}
     clampPlayer();
     if(input.abilityPressed){input.abilityPressed=false;useAbility();}
@@ -1158,13 +1249,13 @@
   function abilityBlast(radius,damage,status,push=false){const p=game.player;game.zones.push({id:uid(),type:"blastFx",x:p.x,y:p.y,radius,life:.35,color:p.ring});for(const e of game.enemies){if(e.dead||e.invulnerable)continue;if(dist(p,e)<=radius+e.r){dealDamage(e,damage*totalDamageMultiplier(e),"ABILITY",false,status);if(push&&!e.boss){const a=angleTo(p,e);e.x+=Math.cos(a)*80;e.y+=Math.sin(a)*80;}}}}
   function healPlayer(amount){const p=game.player;if(!p)return;const old=p.hp;p.hp=Math.min(p.maxHp,p.hp+amount);const healed=p.hp-old;if(healed>0){game.runStats.healing+=healed;showNumber(p.x,p.y-32,"+"+Math.ceil(healed),"#63ff9c",true);}}
   function armorReduction(armor){return armor/(armor+100);}
-  function hurtPlayer(amount,source="Enemy",bypass=.0){const p=game.player;if(!p||p.invuln>0||p.ghost>0||game.state!=="playing")return;let reduction=armorReduction(Math.max(0,p.armor))*(1-bypass);if(save.selectedCharacter==="TITAN"&&source.includes("Hazard"))reduction=Math.min(.75,reduction+.15);let dmg=Math.max(1,amount*(1-reduction));if(p.shield>0){const blocked=Math.min(p.shield,dmg);p.shield-=blocked;dmg-=blocked;game.runStats.prevented+=blocked;showNumber(p.x,p.y-32,"-"+Math.ceil(blocked)+" SHIELD","#7dfcff",true);}if(dmg>0){p.hp-=dmg;p.lastDamage=game.elapsed;p.invuln=.45;game.runStats.damageTaken+=dmg;game.runStats.finalSource=source;showNumber(p.x,p.y-36,"-"+Math.ceil(dmg),"#ff5e6d",true);game.camera.shake=Math.max(game.camera.shake,6);sfx(100,.1,"sawtooth",.06);}if(p.hp<=0){if(p.revive&&!p.revived){p.revived=true;p.hp=p.maxHp*.3;p.invuln=2.2;game.banner={text:"SECOND CHANCE",sub:"REVIVED",life:2,color:"#ffffff"};}else endRun("death");}}
+  function hurtPlayer(amount,source="Enemy",bypass=.0){const p=game.player;if(!p||p.invuln>0||p.ghost>0||game.state!=="playing")return;let reduction=armorReduction(Math.max(0,p.armor))*(1-bypass);if(save.selectedCharacter==="TITAN"&&source.includes("Hazard"))reduction=Math.min(.75,reduction+.15);let dmg=Math.max(1,amount*(1-reduction));if(p.shield>0){const blocked=Math.min(p.shield,dmg);p.shield-=blocked;dmg-=blocked;game.runStats.prevented+=blocked;showNumber(p.x,p.y-32,"-"+Math.ceil(blocked)+" SHIELD","#7dfcff",true);}if(dmg>0){p.hp-=dmg;p.lastDamage=game.elapsed;p.invuln=.45;game.runStats.damageTaken+=dmg;game.runStats.finalSource=source;showNumber(p.x,p.y-36,"-"+Math.ceil(dmg),"#ff5e6d",true);game.camera.shake=Math.max(game.camera.shake,6);sfx(100,.1,"sawtooth",.06);}if(p.hp<=0){if(p.godDefense&&!game.godPassiveUses.ARMOR){game.godPassiveUses.ARMOR=true;p.godDefense=false;p.hp=Math.max(1,p.maxHp*.18);p.invuln=2.5;game.banner={text:"DIVINE AEGIS",sub:"LETHAL HIT DENIED",life:2,color:"#ffffff"};}else if(p.revive&&!p.revived){p.revived=true;p.hp=p.maxHp*.3;p.invuln=2.2;game.banner={text:"SECOND CHANCE",sub:"REVIVED",life:2,color:"#ffffff"};}else endRun("death");}}
   function dealDamage(e,amount,weaponId="UNKNOWN",crit=false,status=null){
     if(!e||e.dead||e.invulnerable)return 0;
     let dmg=amount;
-    if(e.armor)dmg*=1-armorReduction(Math.max(0,e.armor-(e.status.armorBreak||0)*3));
+    if(e.armor){let effectiveArmor=Math.max(0,e.armor-(e.status.armorBreak||0)*3);effectiveArmor*=1-(game.player.mythArmorPen||0);dmg*=1-armorReduction(effectiveArmor);}
     if(e.eliteMods?.includes("RESISTANT")&&weaponId!=="ABILITY")dmg*=.72;
-    if(crit&&game.passives.ARMOR_BREAK)e.status.armorBreak=Math.min(5,e.status.armorBreak+1);
+    if(crit&&game.passives.ARMOR_BREAK)e.status.armorBreak=Math.min(10,e.status.armorBreak+1+Math.floor(passiveStrength("ARMOR_BREAK")/2.5));
     if(e.shield>0){const b=Math.min(e.shield,dmg);e.shield-=b;dmg-=b;}
     if(dmg<=0)return 0;
 
@@ -1184,6 +1275,7 @@
     game.runStats.weaponDamage[weaponId]=(game.runStats.weaponDamage[weaponId]||0)+dmg;
     game.runStats.highestHit=Math.max(game.runStats.highestHit,dmg);
     showDamageNumber(e,dmg,crit);
+    if(crit&&game.player.godCrit&&game.elapsed-(game.lastGodCritBurst||-99)>.35&&weaponId!=="GOD_CRIT"){game.lastGodCritBurst=game.elapsed;explodeAt(e.x,e.y,95*game.player.area,dmg*.65,"GOD_CRIT",null);}
     applyStatus(e,status,dmg);
     if(e.eliteMods?.includes("REFLECTIVE")&&Math.random()<.06)hurtPlayer(dmg*.08,"Reflected damage");
     if(e.hp<=0&&!e.gateTriggered)killEnemy(e,weaponId);
@@ -1509,7 +1601,7 @@
     if(game.projectiles.length>1600)game.projectiles.splice(0,game.projectiles.length-1600);
     if(game.reverseProjectiles>0)game.reverseProjectiles=Math.max(0,game.reverseProjectiles-dt);
   }
-  function explodeAt(x,y,radius,damage,weaponId,status){game.zones.push({id:uid(),type:"blastFx",x,y,radius,life:.25,color:"#ff9f43"});for(const e of game.enemies){if(!e.dead&&!e.invulnerable&&Math.hypot(e.x-x,e.y-y)<radius+e.r)dealDamage(e,damage,weaponId,false,status);}}
+  function explodeAt(x,y,radius,damage,weaponId,status){game.zones.push({id:uid(),type:"blastFx",x,y,radius,life:.25,color:"#ff9f43"});for(const e of game.enemies){if(!e.dead&&!e.invulnerable&&Math.hypot(e.x-x,e.y-y)<radius+e.r)dealDamage(e,damage,weaponId,false,status);}if(game.player?.godArea&&weaponId!=="GOD_AREA")game.zones.push({id:uid(),type:"delayedPlayerBlast",x,y,radius:radius*1.35,damage:damage*.55,weaponId:"GOD_AREA",status,age:0,delay:.32,life:.58,color:"#ffffff"});}
   function explodeEnemy(e){game.zones.push({id:uid(),type:"enemyWarning",x:e.x,y:e.y,r:85,life:.35,explodeDamage:e.damage,color:e.color,source:e.name});killEnemy(e,"SELF");}
   function updateZones(dt){
     for(const z of game.zones){
@@ -1544,6 +1636,7 @@
         if(z.age>=z.warn&&z.age<z.warn+z.active&&z.nextHit<=0&&Math.hypot(game.player.x-cx,game.player.y-cy)>z.r-game.player.r){hurtPlayer(z.damage,z.source||"Outside Safe Zone");z.nextHit=z.tickRate;}
         if(z.life<=0)z.dead=true;continue;
       }
+      if(z.type==="delayedPlayerBlast"){z.age+=dt;z.life-=dt;if(!z.exploded&&z.age>=z.delay){z.exploded=true;game.zones.push({id:uid(),type:"blastFx",x:z.x,y:z.y,radius:z.radius,life:.25,color:z.color});for(const e of game.enemies){if(!e.dead&&!e.invulnerable&&Math.hypot(e.x-z.x,e.y-z.y)<z.radius+e.r)dealDamage(e,z.damage,z.weaponId,false,z.status);}}if(z.life<=0)z.dead=true;continue;}
       z.life-=dt;
       if(z.type==="playerZone"){z.tick-=dt;if(z.pull)for(const e of game.enemies){if(!e.dead&&!e.boss&&dist2(z,e)<z.r*z.r){const a=angleTo(e,z);e.x+=Math.cos(a)*z.pull*dt;e.y+=Math.sin(a)*z.pull*dt;}}if(z.tick<=0){z.tick=.28;for(const e of game.enemies)if(!e.dead&&!e.invulnerable&&dist2(z,e)<(z.r+e.r)**2)dealDamage(e,z.damage*.28,z.weaponId,false,z.status);}}
       if(z.type==="ward"){z.x=game.player.x;z.y=game.player.y;game.player.shield=Math.max(game.player.shield,8*(1+game.player.shieldPower));}
@@ -1564,9 +1657,9 @@
     if(e.eliteMods?.includes("EXPLOSIVE"))game.zones.push({id:uid(),type:"enemyWarning",x:e.x,y:e.y,r:80,life:.45,explodeDamage:e.damage*.8,color:e.color,source:"Elite explosion"});
     if(e.eliteMods?.includes("DEATH_PULSE"))for(let i=0;i<8;i++)enemyShoot(e,i*TAU/8,e.bulletSpeed*.8);
     if(e.eliteMods?.includes("SPLITTING")&&!e.boss){for(let i=0;i<2;i++){const n=spawnEnemy("CHASER",false,i,2);n.x=e.x+rand(30,-30);n.y=e.y+rand(30,-30);n.hp=e.maxHp*.18;n.maxHp=n.hp;n.xp=e.xp*.15;n.summoned=true;}}
-    if(game.passives.KILL_EXPLOSION&&Math.random()<.08*game.passives.KILL_EXPLOSION)explodeAt(e.x,e.y,70,12*game.passives.KILL_EXPLOSION*totalDamageMultiplier(),"KILL_EXPLOSION",null);
+    if(game.passives.KILL_EXPLOSION){const pow=passiveStrength("KILL_EXPLOSION");if(Math.random()<Math.min(.75,.06*pow))explodeAt(e.x,e.y,60+pow*10,(8+8*pow)*totalDamageMultiplier(),"KILL_EXPLOSION",null);}
     if(game.player.vampire&&game.runStats.kills%18===0)healPlayer(1);
-    dropGem(e.x,e.y,e.xp*(e.elite?1.8:1)*(e.boss?3:1));burstParticles(e.x,e.y,e.color,e.boss?30:e.elite?18:8);
+    const gemValue=e.xp*(e.elite?1.8:1)*(e.boss?3:1);dropGem(e.x,e.y,gemValue);if(game.player.godXp&&e.elite)dropGem(e.x+18,e.y-12,gemValue);burstParticles(e.x,e.y,e.color,e.boss?30:e.elite?18:8);
     if(e.boss){
       if(e.bossType==="RAVAGER"){unlockCharacterProgress("VOID");persist();}
       if(e.bossType==="WORLDBREAKER"){save.chaosUnlocked=true;save.fakeEndingSeen=true;if(save.selectedCharacter==="TANK")save.achievements.TANK_WORLD=true;unlockCharacterProgress("OVERLORD");unlockCharacterProgress("VOID");game.pendingEnding="worldbreaker";persist();}
